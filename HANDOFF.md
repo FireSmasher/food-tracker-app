@@ -1,8 +1,87 @@
 # Handoff: Kain → Saulog OS
 
-Status as of 2026-09-08. Read this before touching the next phase of this project.
+Status as of 2026-09-08 (second round, same day). Read this before touching the next
+phase of this project.
 
-## Built 2026-09-08 — Saulog OS, all four pieces wired
+## Built 2026-09-08 (round 2) — nav restructure, undo, no-zoom, wger fix, targets sync
+
+Picked up from the "known limitations" list at the bottom of round 1 (offline queue,
+one-way TARGETS, best-effort wger) plus a fresh set of UI asks. Tested locally in a
+browser at 420×860 (phone-sized viewport) via `python3 -m http.server`: logged a real
+food entry and a real workout entry, deleted and undid both, opened/closed Settings via
+the gear icon, switched Kain's Log/Recipes subtabs, confirmed the wger fallback returns
+real muscle data live. No console errors on load. Not yet re-tested on Edwin's actual
+phone/PWA install — do that before considering this round fully closed.
+
+- **Nav restructure.** Bottom tab bar is now just `Kain | Buhat` — Log and Recipes
+  merged under a "Kain" tab with an internal Log/Recipes subnav (`#panel-kain` wraps
+  `#sub-klog`/`#sub-krecipes`), and Settings moved out of the tab bar entirely into a
+  ⚙ gear icon top-right of the "Saulog OS" header (`#settingsGearBtn`). The gear opens
+  `#panel-settings` full-screen with a "Close" button that returns to whichever bottom
+  tab (Kain or Buhat) was active before.
+- **Undo for accidental deletion**, both Kain (food logs) and Buhat (workouts). Deleting
+  a row hides it immediately (soft-delete via an in-memory `pendingDeletes` set, so
+  totals/targets recompute right away) but the actual IndexedDB/Supabase delete is
+  delayed 5s (`UNDO_DELAY_MS`) behind a bottom snackbar with an Undo button
+  (`softDeleteLog`/`softDeleteWorkout` in app.js). Undo cancels the pending timer and
+  restores the row. Not persisted across a page reload — a reload before the 5s window
+  elapses would still show the row as un-deleted next load, since it was never actually
+  removed yet, which is the correct/expected behavior for a soft-delete.
+- **No-zoom, scroll-only.** Viewport meta now has `maximum-scale=1, user-scalable=no`;
+  `html, body { touch-action: pan-y; overscroll-behavior-x: none; }` blocks pinch-zoom
+  at the browser level (the more reliable modern mechanism vs. the meta tag alone,
+  which some browsers partially ignore). Also bumped all text/number/password
+  inputs and the Buhat split `<select>` to `font-size: 16px` — below 16px, iOS Safari
+  auto-zooms in on input focus regardless of the meta tag, which was the most likely
+  real-world trigger for "the app zooms in" during actual use.
+- **wger muscle-tag fix — this was a real, previously silent break, not just
+  "best-effort" as round 1's comment claimed.** Confirmed by hand (curl) 2026-09-08:
+  `/api/v2/exercise/search/`, the endpoint round 1's code called, now 404s — wger
+  removed it from their API entirely. So every Buhat exercise not already in the
+  bundled dictionary was silently falling straight to the manual `prompt()`, with the
+  live-lookup step doing nothing. Replaced with wger's current endpoints: exact-name
+  lookup against `/api/v2/exercise-translation/?name=...&language=2` (tried as typed,
+  then Title-Cased, since wger names are Title Case — confirmed by hand this filter is
+  case-sensitive exact-match, and confirmed `search=`/`name__icontains=` are silent
+  no-ops on this endpoint that return the whole ~3300-row table unfiltered, so an exact
+  name is the only real option here), then `/api/v2/exerciseinfo/{id}` for
+  category + secondary-muscles (e.g. "Bench Press" → "Chest/Shoulders/Triceps",
+  confirmed live). Real fix, but narrower than true fuzzy search — only hits when the
+  typed name matches wger's own naming.
+- **TARGETS sync-back (Nippard → Kain), read-only from the app's side.** New `targets`
+  table in `supabase/schema.sql` (RLS: owner can `select`, nobody but `service_role`
+  can write — enforced by simply not having an insert/update policy for
+  `authenticated`). `app.js` gained `syncTargets()`, called on init (if already signed
+  in) and right after a successful sign-in, which overwrites the in-memory `TARGETS`
+  from that table and caches it to `localStorage` (`saulog_targets`) so it still works
+  offline after the first sync. `DEFAULT_TARGETS` (the old hardcoded 2300/150/70/265)
+  is now only the last-resort fallback if nothing's ever synced. New
+  `scripts/push-targets.py` — on-demand, same pattern as `query-logs.py` — is what
+  Nippard actually runs to push new numbers: `python3 push-targets.py --kcal 2300
+  --protein 150 --fat 70 --carb 265`. **It needs `~/.saulog-os-service.json` to also
+  carry a `"user_id"` key** (the UUID from Supabase → Authentication → Users) —
+  Edwin adds that himself, same credential-boundary rule as the service_role key
+  itself; this script will not create or ask for it. Until that key is added,
+  push-targets.py exits with a clear error rather than doing anything silently wrong.
+- Bumped `sw.js`'s cache name to `food-tracker-v7` (from `v6`) since `index.html`/
+  `app.js` changed substantially — otherwise a phone with the old service worker
+  active could keep serving stale cached assets after this deploys.
+
+### Still open after this round
+
+- **Offline delete queue still doesn't exist** — the undo feature above is unrelated to
+  round 1's "no offline sync queue" limitation (that one's about food/workout log
+  *creation* never syncing retroactively; still true, still not built).
+- **push-targets.py is unverified against a live push** — the code path was reviewed
+  and matches query-logs.py's tested pattern, but nobody has actually run it against
+  the real Supabase project yet (needs Edwin to add `user_id` to his local config
+  first). Do that before trusting it blindly.
+- **wger fix is exact-match only**, not fuzzy — see above. If Edwin finds himself
+  frequently typing exercise names that don't match wger's naming, the honest next
+  step is a bigger local dictionary (like `workouts.json` already is), not another
+  attempt at wger's search API.
+
+## Built 2026-09-08 (round 1) — Saulog OS, all four pieces wired
 
 Edwin picked Option C (external backend) explicitly, not Option A — rejected
 any Artifact-based approach ("i don't want any artifacts, i want this to be

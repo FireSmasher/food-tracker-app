@@ -112,8 +112,40 @@ function formatFullDate(isoDate) {
 }
 const RESTAURANT_BUMP = 1.15;
 
-// Nippard system targets, set 14 Aug 2026 (~/Documents/claude/Nippard/03_NUTRITION/TARGETS.md)
-const TARGETS = { kcal: 2300, protein: 150, fat: 70, carb: 265 };
+// Nippard system targets, set 14 Aug 2026 (~/Documents/claude/Nippard/03_NUTRITION/TARGETS.md).
+// This is only the offline/never-synced fallback now — see syncTargets() below, which
+// overrides it from Supabase's `targets` table (the Nippard -> Kain direction of the sync).
+const DEFAULT_TARGETS = { kcal: 2300, protein: 150, fat: 70, carb: 265 };
+let TARGETS = { ...DEFAULT_TARGETS };
+
+function loadCachedTargets() {
+  try {
+    const raw = localStorage.getItem('saulog_targets');
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.kcal === 'number') TARGETS = parsed;
+  } catch {}
+}
+
+// Pulls Edwin's current Nippard targets from Supabase, if signed in and online. Read-only
+// from the app's side — only Nippard's own scripts/push-targets.py (service_role key) can
+// write this table, see supabase/schema.sql. Falls back to whatever was last cached in
+// localStorage (or DEFAULT_TARGETS, if nothing's ever synced) on any failure.
+async function syncTargets() {
+  if (!supabaseConfigured() || !loadSbSession()) return;
+  try {
+    const res = await supabaseRequest('/rest/v1/targets?select=kcal,protein,fat,carb&limit=1');
+    if (!res || !res.ok) return;
+    const rows = await res.json();
+    const row = rows[0];
+    if (!row) return;
+    TARGETS = { kcal: row.kcal, protein: row.protein, fat: row.fat, carb: row.carb };
+    try { localStorage.setItem('saulog_targets', JSON.stringify(TARGETS)); } catch {}
+    await renderTotals();
+  } catch (err) {
+    console.warn('Targets sync skipped:', err);
+  }
+}
 
 // ---------- USDA FoodData Central search ----------
 // DEMO_KEY works with no signup (30 req/hr, 50/day per IP, shared by everyone using it).
@@ -160,18 +192,34 @@ async function searchUSDA(query) {
 
 // ---------- wger.de exercise search (Buhat's muscle-group fallback) ----------
 // Free, no key required. Used only when an exercise isn't already in the bundled/local
-// dictionary. Best-effort — wger's category field varies by API version, so this takes
-// whatever plain-string category comes back and gives up cleanly (caller falls back to
-// asking Edwin) rather than guessing at a numeric category id.
+// dictionary.
+//
+// wger removed its old free-text suggest endpoint (/api/v2/exercise/search/, used by the
+// original build) — it now 404s outright, confirmed by hand 2026-09-08. Its replacement
+// list endpoint (exercise-translation) also has no working substring/fuzzy filter (its
+// `search=` param is a silent no-op that returns the whole ~3300-row table unfiltered,
+// also confirmed by hand), so this can only do an exact, case-sensitive name lookup —
+// tried as typed, then Title Cased, since wger's own names are Title Case. That's real
+// but narrower than "fuzzy search": it hits when the typed name matches wger's naming,
+// same overall fallback shape as before (local dictionary -> wger -> ask Edwin).
 async function searchWger(name) {
-  const url = `https://wger.de/api/v2/exercise/search/?term=${encodeURIComponent(name)}&language=english&format=json`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`wger search failed (${res.status})`);
-  const data = await res.json();
-  const first = (data.suggestions || [])[0];
-  if (!first) return null;
-  const cat = first.data && first.data.category;
-  return { name: first.value || name, muscle: typeof cat === 'string' ? cat : null };
+  const variants = [...new Set([name, name.replace(/\w\S*/g, w => w[0].toUpperCase() + w.slice(1).toLowerCase())])];
+  for (const variant of variants) {
+    const url = `https://wger.de/api/v2/exercise-translation/?name=${encodeURIComponent(variant)}&language=2&format=json`;
+    const res = await fetch(url);
+    if (!res.ok) continue;
+    const data = await res.json();
+    const match = (data.results || [])[0];
+    if (!match) continue;
+    const infoRes = await fetch(`https://wger.de/api/v2/exerciseinfo/${match.exercise}/?format=json`);
+    if (!infoRes.ok) return { name: match.name, muscle: null };
+    const info = await infoRes.json();
+    const primary = info.category && info.category.name;
+    const secondaries = (info.muscles_secondary || []).map(m => m.name_en).filter(Boolean);
+    const muscle = primary ? (secondaries.length ? `${primary}/${secondaries.join('/')}` : primary) : null;
+    return { name: match.name, muscle };
+  }
+  return null;
 }
 
 // ---------- Supabase sync (Nippard/Sevro visibility) ----------
@@ -300,6 +348,7 @@ async function handleSyncSignIn() {
     await supabaseSignIn(email, password);
     $('#syncPassword').value = '';
     renderSyncStatus();
+    await syncTargets();
   } catch (err) {
     alert(err.message);
   }
@@ -366,7 +415,7 @@ async function renderRecipeList() {
 
 async function renderLog() {
   const all = await getAll('logs');
-  const entries = all.filter(l => l.date === currentDate).sort((a, b) => a.time.localeCompare(b.time));
+  const entries = all.filter(l => l.date === currentDate && !pendingDeletes.logs.has(l.id)).sort((a, b) => a.time.localeCompare(b.time));
   const box = $('#logBox');
   $('#logDate').textContent = formatFullDate(currentDate);
 
@@ -386,12 +435,10 @@ async function renderLog() {
         <div class="macros"><strong>${e.kcal}</strong> kcal · P <strong>${e.protein}</strong>g · C <strong>${e.carb}</strong>g · F <strong>${e.fat}</strong>g</div>
       </div>`).join('');
     box.querySelectorAll('[data-del-log]').forEach(btn => {
-      btn.onclick = async () => {
+      btn.onclick = () => {
         const logId = Number(btn.dataset.delLog);
         const target = entries.find(e => e.id === logId);
-        await del('logs', logId);
-        if (target && target.supaId) await syncDelete('food_logs', target.supaId);
-        await renderLog(); await renderTotals();
+        if (target) softDeleteLog(target);
       };
     });
   }
@@ -447,7 +494,7 @@ async function renderWorkouts() {
   const dateEl = $('#workoutDate');
   if (!dateEl) return; // Buhat panel not in DOM yet on first paint of an old cached index.html
   const all = await getAll('workouts');
-  const entries = all.filter(w => w.date === currentDate).sort((a, b) => a.time.localeCompare(b.time));
+  const entries = all.filter(w => w.date === currentDate && !pendingDeletes.workouts.has(w.id)).sort((a, b) => a.time.localeCompare(b.time));
   const box = $('#workoutBox');
   dateEl.textContent = formatFullDate(currentDate);
 
@@ -467,15 +514,68 @@ async function renderWorkouts() {
         </div>
       </div>`).join('');
     box.querySelectorAll('[data-del-workout]').forEach(btn => {
-      btn.onclick = async () => {
+      btn.onclick = () => {
         const wId = Number(btn.dataset.delWorkout);
         const target = entries.find(w => w.id === wId);
-        await del('workouts', wId);
-        if (target && target.supaId) await syncDelete('workout_logs', target.supaId);
-        await renderWorkouts();
+        if (target) softDeleteWorkout(target);
       };
     });
   }
+}
+
+// ---------- Undo (soft-delete for logs/workouts) ----------
+// A "deleted" row is hidden from render immediately but not actually removed from
+// IndexedDB/Supabase until UNDO_DELAY_MS passes with no undo — so a mis-tap is always
+// recoverable, for both Kain's food log and Buhat's workout log.
+const UNDO_DELAY_MS = 5000;
+const pendingDeletes = { logs: new Set(), workouts: new Set() };
+const pendingTimers = {};
+
+function showUndoToast(message, onUndo) {
+  const toast = $('#undoToast');
+  toast.querySelector('.undo-message').textContent = message;
+  toast.hidden = false;
+  clearTimeout(toast._hideTimer);
+  toast._hideTimer = setTimeout(() => { toast.hidden = true; }, UNDO_DELAY_MS);
+  $('#undoBtn').onclick = () => { onUndo(); toast.hidden = true; clearTimeout(toast._hideTimer); };
+}
+
+function softDeleteLog(entry) {
+  pendingDeletes.logs.add(entry.id);
+  renderLog();
+  const timerKey = `log-${entry.id}`;
+  pendingTimers[timerKey] = setTimeout(async () => {
+    delete pendingTimers[timerKey];
+    if (!pendingDeletes.logs.has(entry.id)) return; // already undone
+    pendingDeletes.logs.delete(entry.id);
+    await del('logs', entry.id);
+    if (entry.supaId) await syncDelete('food_logs', entry.supaId);
+  }, UNDO_DELAY_MS);
+  showUndoToast(`Deleted "${entry.name}"`, () => {
+    clearTimeout(pendingTimers[timerKey]);
+    delete pendingTimers[timerKey];
+    pendingDeletes.logs.delete(entry.id);
+    renderLog();
+  });
+}
+
+function softDeleteWorkout(entry) {
+  pendingDeletes.workouts.add(entry.id);
+  renderWorkouts();
+  const timerKey = `workout-${entry.id}`;
+  pendingTimers[timerKey] = setTimeout(async () => {
+    delete pendingTimers[timerKey];
+    if (!pendingDeletes.workouts.has(entry.id)) return; // already undone
+    pendingDeletes.workouts.delete(entry.id);
+    await del('workouts', entry.id);
+    if (entry.supaId) await syncDelete('workout_logs', entry.supaId);
+  }, UNDO_DELAY_MS);
+  showUndoToast(`Deleted "${entry.exercise}"`, () => {
+    clearTimeout(pendingTimers[timerKey]);
+    delete pendingTimers[timerKey];
+    pendingDeletes.workouts.delete(entry.id);
+    renderWorkouts();
+  });
 }
 
 function escapeHtml(s) {
@@ -816,20 +916,44 @@ function shiftDate(days) {
 }
 
 // ---------- Tabs ----------
+// Bottom nav only ever holds Kain/Buhat now — Settings moved to the header gear icon
+// (⚙) so it doesn't compete for space in the tab bar. Kain itself hosts Log and
+// Recipes as an internal subnav rather than separate top-level tabs.
 function initTabs() {
   $$('.tab').forEach(tab => {
     tab.onclick = () => {
       $$('.tab').forEach(t => t.classList.remove('active'));
       $$('.panel').forEach(p => p.classList.remove('active'));
+      $('#settingsGearBtn').classList.remove('active');
       tab.classList.add('active');
       $('#panel-' + tab.dataset.tab).classList.add('active');
     };
+  });
+  $$('.subtab').forEach(sub => {
+    sub.onclick = () => {
+      $$('.subtab').forEach(s => s.classList.remove('active'));
+      $$('.subpanel').forEach(p => p.classList.remove('active'));
+      sub.classList.add('active');
+      $('#sub-' + sub.dataset.subtab).classList.add('active');
+    };
+  });
+  $('#settingsGearBtn').addEventListener('click', () => {
+    $$('.panel').forEach(p => p.classList.remove('active'));
+    $('#panel-settings').classList.add('active');
+    $('#settingsGearBtn').classList.add('active');
+  });
+  $('#closeSettingsBtn').addEventListener('click', () => {
+    $('#panel-settings').classList.remove('active');
+    $('#settingsGearBtn').classList.remove('active');
+    const activeTab = $('.tab.active') || $('.tab');
+    $('#panel-' + activeTab.dataset.tab).classList.add('active');
   });
 }
 
 // ---------- Init ----------
 async function init() {
   await openDB();
+  loadCachedTargets();
   await seedFoodsIfEmpty();
   await seedExercisesIfEmpty();
   await refreshAll();
@@ -864,6 +988,7 @@ async function init() {
   $('#syncSignInBtn').addEventListener('click', handleSyncSignIn);
   $('#syncSignOutBtn').addEventListener('click', handleSyncSignOut);
   renderSyncStatus();
+  syncTargets();
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});

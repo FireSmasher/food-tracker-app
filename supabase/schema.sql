@@ -41,11 +41,26 @@ create table if not exists public.workout_logs (
   created_at timestamptz not null default now()
 );
 
+-- Nippard -> Kain direction of the targets sync (added 2026-09-08). One row per user,
+-- written ONLY by scripts/push-targets.py using the service_role key — there is
+-- deliberately no insert/update/delete policy for `authenticated` below, so the app
+-- itself can only ever read this table, never write it. That's the whole point: targets
+-- flow from Nippard into the app, not the other way around.
+create table if not exists public.targets (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  kcal numeric not null,
+  protein numeric not null,
+  fat numeric not null,
+  carb numeric not null,
+  updated_at timestamptz not null default now()
+);
+
 create index if not exists food_logs_user_date_idx on public.food_logs (user_id, date);
 create index if not exists workout_logs_user_date_idx on public.workout_logs (user_id, date);
 
 alter table public.food_logs enable row level security;
 alter table public.workout_logs enable row level security;
+alter table public.targets enable row level security;
 
 -- Each user (in practice: just Edwin) can only ever see or touch their own rows.
 create policy "food_logs: owner select" on public.food_logs
@@ -66,6 +81,11 @@ create policy "workout_logs: owner update" on public.workout_logs
 create policy "workout_logs: owner delete" on public.workout_logs
   for delete using (auth.uid() = user_id);
 
+-- Read-only for the signed-in owner; no insert/update/delete policy exists for
+-- `authenticated` on purpose (see comment on the table above).
+create policy "targets: owner select" on public.targets
+  for select using (auth.uid() = user_id);
+
 -- RLS restricts access, it doesn't grant it — a role still needs the baseline table-level
 -- privilege before Postgres even evaluates a policy. If "Automatically expose new tables"
 -- is off at project creation (the recommended setting, see HANDOFF.md), these grants are
@@ -73,6 +93,8 @@ create policy "workout_logs: owner delete" on public.workout_logs
 -- script (service_role) get a bare 42501 permission-denied without them.
 grant select, insert, update, delete on public.food_logs to authenticated, service_role;
 grant select, insert, update, delete on public.workout_logs to authenticated, service_role;
+grant select on public.targets to authenticated;
+grant select, insert, update, delete on public.targets to service_role;
 
 -- Nippard/Sevro read access goes through scripts/query-logs.py using the service_role key,
 -- which bypasses RLS by design (it's a trusted server-side key, never shipped in this repo).

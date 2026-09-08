@@ -70,6 +70,10 @@ function nowTimeStr() {
   const d = new Date();
   return d.toTimeString().slice(0, 5);
 }
+function formatFullDate(isoDate) {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+}
 const RESTAURANT_BUMP = 1.15;
 
 // Nippard system targets, set 14 Aug 2026 (~/Documents/claude/Nippard/03_NUTRITION/TARGETS.md)
@@ -124,7 +128,7 @@ async function renderLog() {
   const all = await getAll('logs');
   const entries = all.filter(l => l.date === currentDate).sort((a, b) => a.time.localeCompare(b.time));
   const box = $('#logBox');
-  $('#logDate').textContent = currentDate;
+  $('#logDate').textContent = formatFullDate(currentDate);
 
   if (entries.length === 0) {
     box.innerHTML = '<p class="muted">No entries for this day.</p>';

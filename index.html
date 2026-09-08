@@ -20,14 +20,21 @@
   :root {
     --bg: #faf7f0; --card: #ffffff; --text: #241f18; --muted: #6f6353;
     --accent: #96723c; --border: #e3dbca; --danger: #b1503d;
-    --input-bg: #f6f1e4; --on-accent: #2b1f10;
+    --input-bg: #f6f1e4; --notes-bg: #efe8d8; --on-accent: #2b1f10;
     --font-display: 'Cormorant Garamond', Georgia, serif;
     --font-body: 'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
   }
   * { box-sizing: border-box; }
+  html { height: 100%; }
   html, body { touch-action: pan-y; overscroll-behavior-x: none; }
-  body { margin: 0; font-family: var(--font-body); background: var(--bg); color: var(--text); padding-bottom: 70px; }
-  header { padding: calc(20px + env(safe-area-inset-top)) 16px 18px; text-align: center; border-bottom: 1px solid var(--border); position: relative; }
+  /* body itself never scrolls (fixed height, no overflow) so an iOS rubber-band bounce
+     can't drag the whole page and expose a gap under the fixed-looking bottom nav.
+     #scrollArea is the only scrolling region; nav.tabs sits after it as a normal flex
+     child, not position:fixed, so it can't detach from the layout during momentum
+     scroll or when focusing an input triggers the page's own scroll-into-view. */
+  body { margin: 0; font-family: var(--font-body); background: var(--bg); color: var(--text); height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+  #scrollArea { flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; }
+  header { padding: calc(20px + env(safe-area-inset-top)) 16px 18px; text-align: center; border-bottom: 1px solid var(--border); position: relative; flex: 0 0 auto; }
   header h1 { font-family: var(--font-body); font-weight: 700; font-size: 27px; margin: 0; letter-spacing: 1px; }
   .gear-btn { position: absolute; right: 16px; top: calc(20px + env(safe-area-inset-top)); background: none; color: var(--muted); font-size: 22px; padding: 0; line-height: 1; }
   .gear-btn.active { color: var(--accent); }
@@ -51,7 +58,7 @@
     width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border);
     background: var(--input-bg); color: var(--text); font-size: 16px; margin-bottom: 8px;
   }
-  input.optional-input { font-size: 13px; color: var(--muted); }
+  input.optional-input { font-size: 13px; color: var(--muted); background: var(--notes-bg); padding: 6px 10px; }
   label.field { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
   button { cursor: pointer; border: none; border-radius: 8px; padding: 10px 14px; font-size: 14px; font-weight: 700; font-family: var(--font-body); }
   button.primary { background: var(--accent); color: var(--on-accent); width: 100%; }
@@ -67,7 +74,7 @@
   .tot { text-align: center; flex: 1; }
   .tot span { display: block; font-size: 18px; font-weight: 700; }
   .tot label { font-size: 11px; color: var(--muted); }
-  nav.tabs { position: fixed; bottom: 0; left: 0; right: 0; display: flex; background: var(--card); border-top: 1px solid var(--border); padding-bottom: env(safe-area-inset-bottom); }
+  nav.tabs { flex: 0 0 auto; display: flex; background: var(--card); border-top: 1px solid var(--border); padding-bottom: env(safe-area-inset-bottom); }
   .tab { flex: 1; text-align: center; padding: 12px 0; color: var(--muted); font-size: 12px; background: none; border-radius: 0; }
   .tab.active { color: var(--accent); }
   h2 { font-family: var(--font-display); font-weight: 600; font-size: 19px; letter-spacing: 0.5px; margin: 18px 0 8px; }
@@ -88,6 +95,8 @@
   .search-result .name { font-size: 14px; }
   .search-result .macros-inline { font-size: 12px; color: var(--muted); margin-top: 2px; }
   .search-result button { background: var(--accent); color: var(--on-accent); padding: 6px 10px; font-size: 12px; flex-shrink: 0; }
+  .set-row { padding: 4px 0; border-bottom: 1px solid var(--border); }
+  .set-row:last-child { border-bottom: none; }
 </style>
 </head>
 <body>
@@ -96,6 +105,8 @@
   <h1>Saulog OS</h1>
   <button type="button" id="settingsGearBtn" class="gear-btn" aria-label="Settings">⚙</button>
 </header>
+
+<div id="scrollArea">
 
 <div id="panel-kain" class="panel active">
   <div class="subnav">
@@ -185,21 +196,61 @@
       <option>Cardio</option>
     </select>
 
-    <label class="field">Exercise</label>
-    <div class="row" style="margin-bottom:4px;">
-      <input type="text" id="wExercise" list="exerciseList" placeholder="e.g. Barbell bench press" autocomplete="off" style="margin-bottom:0;">
-      <button type="button" class="ghost small" id="lookupMuscleBtn">Tag</button>
-    </div>
-    <datalist id="exerciseList"></datalist>
-    <div id="muscleTag" class="muted small" style="margin-bottom:8px;"></div>
+    <div id="strengthFields">
+      <label class="field">Exercise</label>
+      <div class="row" style="margin-bottom:4px;">
+        <input type="text" id="wExercise" list="exerciseList" placeholder="e.g. Barbell bench press" autocomplete="off" style="margin-bottom:0;">
+        <button type="button" class="ghost small" id="lookupMuscleBtn">Tag</button>
+      </div>
+      <datalist id="exerciseList"></datalist>
+      <div id="muscleTag" class="muted small" style="margin-bottom:8px;"></div>
 
-    <label class="field">Sets</label>
-    <div class="row" style="margin-bottom:4px;">
-      <input type="number" id="wWeight" placeholder="weight (kg)" min="0" step="any" style="margin-bottom:0;">
-      <input type="number" id="wReps" placeholder="reps" min="0" step="1" style="margin-bottom:0;">
-      <button type="button" class="ghost small" id="addSetBtn">Add set</button>
+      <label class="field">Sets</label>
+      <div class="row" style="margin-bottom:4px;">
+        <input type="number" id="wWeight" placeholder="weight (kg)" min="0" step="any" style="margin-bottom:0;">
+        <input type="number" id="wReps" placeholder="reps" min="0" step="1" style="margin-bottom:0;">
+        <button type="button" class="ghost small" id="addSetBtn">Add set</button>
+      </div>
+      <div id="setsPreview" class="small" style="margin-bottom:8px;"></div>
     </div>
-    <div id="setsPreview" class="muted small" style="margin-bottom:8px;"></div>
+
+    <div id="cardioFields" hidden>
+      <label class="field">Cardio type</label>
+      <select id="cardioType">
+        <option value="Walk">Walk</option>
+        <option value="Run">Run</option>
+        <option value="Jog">Jog</option>
+        <option value="Bike">Bike</option>
+        <option value="Swim">Swim</option>
+        <option value="Other">Other</option>
+      </select>
+      <input type="text" id="cardioOther" placeholder="Name it, e.g. Rowing machine" autocomplete="off" hidden>
+
+      <label class="field">Distance (km)</label>
+      <input type="number" id="cardioDistance" placeholder="e.g. 5" min="0" step="any">
+
+      <div class="row">
+        <div style="flex:1;">
+          <label class="field">Time (min, optional)</label>
+          <input type="number" id="cardioTime" placeholder="e.g. 28" min="0" step="any">
+        </div>
+        <div style="flex:1;">
+          <label class="field">Pace (min/km, optional)</label>
+          <input type="text" id="cardioPace" placeholder="e.g. 5:36">
+        </div>
+      </div>
+
+      <div class="row">
+        <div style="flex:1;">
+          <label class="field">Avg heart rate (optional)</label>
+          <input type="number" id="cardioHr" placeholder="bpm" min="0" step="1">
+        </div>
+        <div style="flex:1;">
+          <label class="field">Calories burned (optional)</label>
+          <input type="number" id="cardioKcal" placeholder="kcal" min="0" step="1">
+        </div>
+      </div>
+    </div>
 
     <label class="field">Notes (optional)</label>
     <input type="text" id="wNotes" class="optional-input" placeholder="e.g. left shoulder tight" autocomplete="off">
@@ -239,6 +290,8 @@
     <button type="button" class="ghost small" id="syncSignOutBtn" style="display:none;">Sign out</button>
     <p class="muted small" style="margin-top:10px; margin-bottom:0;">Signing in lets every food and workout log also write to your private Supabase database, so a Nippard or Sevro session can read it when you ask for analysis. Nothing changes about what's stored on this phone. This only adds a copy going out, and only for entries logged while signed in and online.</p>
   </div>
+</div>
+
 </div>
 
 <div id="searchModal" class="modal-overlay" hidden>

@@ -506,8 +506,8 @@ async function renderWorkouts() {
         <div class="row between">
           <div>
             <strong>${escapeHtml(w.exercise)}</strong> <span class="badge">${escapeHtml(w.split)}</span>
-            <div class="muted small"><em>${w.time}${w.muscle ? ' · ' + escapeHtml(w.muscle) : ''}</em></div>
-            <div class="small">${w.sets.map(s => `${s.weight}kg × ${s.reps}`).join(', ')}</div>
+            <div class="muted small"><em>${w.time}${w.muscle && w.muscle !== 'Cardio' ? ' · ' + escapeHtml(w.muscle) : ''}</em></div>
+            <div class="small">${w.cardio ? formatCardio(w.cardio) : (w.sets || []).map(s => `${s.weight}kg × ${s.reps}`).join(', ')}</div>
             ${w.notes ? `<div class="muted small notes">${escapeHtml(w.notes)}</div>` : ''}
           </div>
           <button class="ghost small danger" data-del-workout="${w.id}">×</button>
@@ -576,6 +576,15 @@ function softDeleteWorkout(entry) {
     pendingDeletes.workouts.delete(entry.id);
     renderWorkouts();
   });
+}
+
+function formatCardio(c) {
+  const parts = [`${c.distanceKm}km`];
+  if (c.timeMin) parts.push(`${c.timeMin}min`);
+  if (c.pace) parts.push(`${c.pace}/km`);
+  if (c.avgHr) parts.push(`${c.avgHr}bpm avg`);
+  if (c.kcal) parts.push(`${c.kcal}kcal`);
+  return parts.join(' · ');
 }
 
 function escapeHtml(s) {
@@ -713,21 +722,111 @@ async function handleSaveRecipe(e) {
 
 // ---------- Buhat: workout logging ----------
 let workoutSets = [];
+let editingSetIndex = null; // index into workoutSets currently loaded into the weight/reps inputs for editing, or null
 let resolvedMuscle = null; // { muscle, source } for whatever's currently typed in #wExercise
+
+// Remembers the last weight used per exercise (localStorage, keyed by lowercased exercise
+// name) so re-logging the same lift doesn't require retyping the weight for every set.
+function getLastWeights() {
+  try { return JSON.parse(localStorage.getItem('saulog_last_weights') || '{}'); }
+  catch { return {}; }
+}
+function setLastWeight(exerciseName, weight) {
+  const name = exerciseName.trim().toLowerCase();
+  if (!name) return;
+  try {
+    const map = getLastWeights();
+    map[name] = weight;
+    localStorage.setItem('saulog_last_weights', JSON.stringify(map));
+  } catch {}
+}
+function prefillLastWeight() {
+  const name = $('#wExercise').value.trim();
+  if (!name || $('#wWeight').value) return; // don't clobber a weight already typed
+  const last = getLastWeights()[name.toLowerCase()];
+  if (last != null) $('#wWeight').value = last;
+}
 
 function renderSetsPreview() {
   const el = $('#setsPreview');
-  el.textContent = workoutSets.length
-    ? workoutSets.map(s => `${s.weight}kg × ${s.reps}`).join(', ')
-    : '';
+  if (workoutSets.length === 0) { el.innerHTML = ''; return; }
+  el.innerHTML = workoutSets.map((s, i) => `
+    <div class="row between set-row">
+      <span>${i + 1}. ${s.weight}kg × ${s.reps}</span>
+      <span class="row" style="gap:4px;">
+        <button type="button" class="ghost small" data-edit-set="${i}">edit</button>
+        <button type="button" class="ghost small danger" data-del-set="${i}">×</button>
+      </span>
+    </div>`).join('');
+  el.querySelectorAll('[data-edit-set]').forEach(btn => {
+    btn.onclick = () => startEditSet(Number(btn.dataset.editSet));
+  });
+  el.querySelectorAll('[data-del-set]').forEach(btn => {
+    btn.onclick = () => {
+      const i = Number(btn.dataset.delSet);
+      if (editingSetIndex === i) cancelEditSet();
+      workoutSets.splice(i, 1);
+      renderSetsPreview();
+    };
+  });
 }
+
+function startEditSet(i) {
+  const s = workoutSets[i];
+  $('#wWeight').value = s.weight;
+  $('#wReps').value = s.reps;
+  editingSetIndex = i;
+  $('#addSetBtn').textContent = 'Update set';
+}
+function cancelEditSet() {
+  editingSetIndex = null;
+  $('#addSetBtn').textContent = 'Add set';
+  $('#wWeight').value = ''; $('#wReps').value = '';
+}
+
 function handleAddSet() {
   const weight = Number($('#wWeight').value);
   const reps = Number($('#wReps').value);
   if (!(weight >= 0) || !(reps > 0)) { alert('Enter a weight (0 or more) and reps (more than 0) first.'); return; }
-  workoutSets.push({ weight, reps });
-  $('#wWeight').value = ''; $('#wReps').value = '';
+  if (editingSetIndex !== null) {
+    workoutSets[editingSetIndex] = { weight, reps };
+    editingSetIndex = null;
+    $('#addSetBtn').textContent = 'Add set';
+  } else {
+    workoutSets.push({ weight, reps });
+  }
+  setLastWeight($('#wExercise').value.trim(), weight);
+  // Weight is left in place (not cleared) since the next set for this exercise is
+  // usually the same weight — only reps tends to change set to set.
+  $('#wReps').value = '';
   renderSetsPreview();
+}
+
+// ---------- Buhat: cardio fields ----------
+// Cardio splits skip muscle-group tagging and the weight/reps sets builder entirely —
+// distance/time/pace describe a cardio session better than sets ever could.
+function isCardioSplit() { return $('#wSplit').value === 'Cardio'; }
+
+function updateSplitFieldVisibility() {
+  const cardio = isCardioSplit();
+  $('#strengthFields').hidden = cardio;
+  $('#cardioFields').hidden = !cardio;
+}
+function updateCardioOtherVisibility() {
+  $('#cardioOther').hidden = $('#cardioType').value !== 'Other';
+}
+
+// Fills in pace automatically from distance+time when the user hasn't typed one of their
+// own — still a plain editable text input, this is just a starting guess.
+function maybeAutoCardioPace() {
+  if ($('#cardioPace').value.trim()) return;
+  const distance = Number($('#cardioDistance').value);
+  const time = Number($('#cardioTime').value);
+  if (!(distance > 0) || !(time > 0)) return;
+  const paceMin = time / distance;
+  const min = Math.floor(paceMin);
+  const sec = Math.round((paceMin - min) * 60);
+  $('#cardioPace').value = `${min}:${String(sec).padStart(2, '0')}`;
 }
 
 // Auto-tags the typed exercise to a muscle group: local dictionary first (bundled +
@@ -774,26 +873,52 @@ async function lookupMuscle() {
 async function handleWorkoutSubmit(e) {
   e.preventDefault();
   const split = $('#wSplit').value;
-  const exercise = $('#wExercise').value.trim();
   const notes = $('#wNotes').value.trim();
-  if (!exercise) { alert('Enter an exercise name.'); return; }
-  if (workoutSets.length === 0) { alert('Add at least one set (weight + reps, then "Add set").'); return; }
+  let exercise, muscle, sets = [], cardio = null;
 
-  if (!resolvedMuscle) await lookupMuscle();
-  const muscle = resolvedMuscle ? resolvedMuscle.muscle : null;
+  if (split === 'Cardio') {
+    const type = $('#cardioType').value;
+    exercise = type === 'Other' ? $('#cardioOther').value.trim() : type;
+    if (!exercise) { alert('Name the cardio activity (pick a type, or fill in "Other").'); return; }
+    const distanceKm = Number($('#cardioDistance').value);
+    if (!(distanceKm > 0)) { alert('Enter a distance (km).'); return; }
+    maybeAutoCardioPace();
+    cardio = {
+      type,
+      distanceKm,
+      timeMin: $('#cardioTime').value ? Number($('#cardioTime').value) : null,
+      pace: $('#cardioPace').value.trim() || null,
+      avgHr: $('#cardioHr').value ? Number($('#cardioHr').value) : null,
+      kcal: $('#cardioKcal').value ? Number($('#cardioKcal').value) : null
+    };
+    muscle = 'Cardio';
+  } else {
+    exercise = $('#wExercise').value.trim();
+    if (!exercise) { alert('Enter an exercise name.'); return; }
+    if (workoutSets.length === 0) { alert('Add at least one set (weight + reps, then "Add set").'); return; }
+    if (!resolvedMuscle) await lookupMuscle();
+    muscle = resolvedMuscle ? resolvedMuscle.muscle : null;
+    sets = workoutSets;
+  }
 
-  const entry = { date: currentDate, time: nowTimeStr(), split, exercise, muscle, sets: workoutSets, notes };
+  const entry = { date: currentDate, time: nowTimeStr(), split, exercise, muscle, sets, cardio, notes };
   const id = await add('workouts', entry);
   entry.id = id;
 
+  // The Supabase `sets` column is jsonb with no shape constraint, so a cardio entry's
+  // distance/time/pace object rides in the same column as a strength entry's set list —
+  // split tells a reader which shape to expect.
   const supaId = await syncInsert('workout_logs', {
     date: entry.date, time: entry.time, split: entry.split, exercise: entry.exercise,
-    muscle: entry.muscle, sets: entry.sets, notes: entry.notes
+    muscle: entry.muscle, sets: entry.cardio || entry.sets, notes: entry.notes
   });
   if (supaId) { entry.supaId = supaId; await put('workouts', entry); }
 
   $('#wExercise').value = ''; $('#wNotes').value = ''; $('#muscleTag').textContent = '';
+  $('#cardioDistance').value = ''; $('#cardioTime').value = ''; $('#cardioPace').value = '';
+  $('#cardioHr').value = ''; $('#cardioKcal').value = '';
   workoutSets = []; resolvedMuscle = null;
+  cancelEditSet();
   renderSetsPreview();
   await renderWorkouts();
 }
@@ -951,7 +1076,14 @@ async function init() {
 
   $('#workoutForm').addEventListener('submit', handleWorkoutSubmit);
   $('#addSetBtn').addEventListener('click', handleAddSet);
-  $('#lookupMuscleBtn').addEventListener('click', lookupMuscle);
+  $('#lookupMuscleBtn').addEventListener('click', async () => { await lookupMuscle(); prefillLastWeight(); });
+  $('#wExercise').addEventListener('change', prefillLastWeight);
+  $('#wSplit').addEventListener('change', updateSplitFieldVisibility);
+  $('#cardioType').addEventListener('change', updateCardioOtherVisibility);
+  $('#cardioDistance').addEventListener('change', maybeAutoCardioPace);
+  $('#cardioTime').addEventListener('change', maybeAutoCardioPace);
+  updateSplitFieldVisibility();
+  updateCardioOtherVisibility();
   $('#wPrevDay').addEventListener('click', () => shiftDate(-1));
   $('#wNextDay').addEventListener('click', () => shiftDate(1));
   $('#wTodayBtn').addEventListener('click', () => { currentDate = todayStr(); renderLog(); renderWorkouts(); });

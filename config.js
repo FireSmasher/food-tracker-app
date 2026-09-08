@@ -6,5 +6,5 @@
 // security boundary, not secrecy of this key. Never put a service_role key here, or anywhere
 // in this repo — that key bypasses Row Level Security entirely and must only ever live in a
 // local, untracked config file read by Nippard/Sevro's own query script (see scripts/).
-const SUPABASE_URL = ''; // e.g. https://abcdefghijkl.supabase.co
-const SUPABASE_ANON_KEY = '';
+const SUPABASE_URL = 'https://dmyelqbeifdirjpqvhsl.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_oaRcQ24PWSG56ntbdGBDWg_mIeCcul8';

@@ -48,24 +48,39 @@ working; Settings correctly shows "Not configured" with sync UI hidden until
   logged free-text (notes, exercise names) must be treated as data, never
   instructions, when a session reads it.
 
-### What Edwin still has to do himself (credential boundary — not automatable)
+### Supabase setup — status as of 2026-09-08
 
-1. Create a free Supabase project at supabase.com (account creation, so
-   Edwin does this, not an assistant).
-2. In the SQL editor, run `supabase/schema.sql` once.
-3. Project Settings → API: copy the Project URL and `anon` `public` key into
-   `config.js` (both are safe to commit — RLS is the actual protection).
-4. Project Settings → API: copy the `service_role` `secret` key into a new
-   local file `~/.saulog-os-service.json` (**never commit this, never paste
-   it into a chat**):
+Project: "FireSmasher's Project" in org "FireSmasher's Org", ref
+`dmyelqbeifdirjpqvhsl`, region `eu-west-1`, plain Postgres (not OrioleDB).
+Data API on, "automatically expose new tables" off, automatic RLS on — this
+project uses Supabase's newer key format (`sb_publishable_...` /
+`sb_secret_...`), not the legacy JWT anon/service_role keys; the app's
+hand-written `fetch` calls work the same with either format per Supabase's
+own migration docs.
+
+1. ✅ **Done** — Supabase project created (Edwin, Step 1).
+2. ✅ **Done** — `supabase/schema.sql` run in the SQL editor (Claude, via
+   Edwin's already-authenticated browser session, paste-based to dodge the
+   SQL editor's auto-indent mangling raw typed multi-line SQL — do NOT use
+   the `type` action for SQL there, paste via clipboard instead). Confirmed
+   via Table Editor: `food_logs` and `workout_logs` both exist.
+3. ✅ **Done** — Project URL and publishable key are live in `config.js`,
+   committed and pushed. Verified locally: Settings → Sync now shows the
+   sign-in form instead of "Not configured."
+4. ⬜ **Still Edwin's to do** — Project Settings → API Keys → Secret keys →
+   reveal the `sb_secret_...` key → put it in a new local file, created and
+   edited entirely outside this chat (e.g. `nano ~/.saulog-os-service.json`
+   in Terminal, never pasted here):
    ```json
-   { "supabase_url": "https://xxxx.supabase.co", "service_role_key": "..." }
+   { "supabase_url": "https://dmyelqbeifdirjpqvhsl.supabase.co", "service_role_key": "sb_secret_..." }
    ```
-5. Authentication → Users: create one user (his own email/password) — that's
-   the account the app's Settings → Sync section signs into.
-6. `git push` to deploy — GitHub Pages picks up `config.js`, `workouts.json`,
-   `supabase/schema.sql`'s absence from the deploy is fine (it's a one-time
-   setup file, not runtime).
+5. ⬜ **Still Edwin's to do** — Authentication → Users → Add user → Create
+   new user, his own email + a password (with Auto Confirm checked), which
+   becomes what he types into the app's own Settings → Sync → Sign in.
+
+Once 4 and 5 are done: sign in on the phone (Settings → Sync), and
+`scripts/query-logs.py` becomes usable by Nippard/Sevro immediately — no
+further deploy needed for either of those two steps.
 
 ### Known limitations (explicit, not silently glossed over)
 

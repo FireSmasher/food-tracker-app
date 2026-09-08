@@ -132,5 +132,6 @@
 {"name":"Lamb leg, raw","kcal":156,"protein":20,"carb":0,"fat":8},
 {"name":"Duck breast, raw, skinless","kcal":123,"protein":19.6,"carb":0,"fat":4.2},
 {"name":"Heinz Mayonnaise, Das Original","kcal":644,"protein":0.8,"carb":3,"fat":70},
-{"name":"Milbona High Protein Joghurt, Natur","kcal":92,"protein":11.8,"carb":5.1,"fat":2.5}
+{"name":"Milbona High Protein Joghurt, Natur","kcal":92,"protein":11.8,"carb":5.1,"fat":2.5},
+{"name":"Bull's-Eye Spicy Garlic Sauce","kcal":260,"protein":0.9,"carb":13,"fat":22}
 ]

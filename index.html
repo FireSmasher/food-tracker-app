@@ -16,7 +16,7 @@
   }
   * { box-sizing: border-box; }
   body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text); padding-bottom: 70px; }
-  header { padding: 16px; text-align: center; }
+  header { padding: calc(16px + env(safe-area-inset-top)) 16px 16px; text-align: center; }
   header h1 { font-size: 18px; margin: 0; letter-spacing: 0.5px; }
   .panel { display: none; padding: 12px 16px; max-width: 480px; margin: 0 auto; }
   .panel.active { display: block; }
@@ -43,7 +43,7 @@
   .tot { text-align: center; flex: 1; }
   .tot span { display: block; font-size: 18px; font-weight: 700; }
   .tot label { font-size: 11px; color: var(--muted); }
-  nav.tabs { position: fixed; bottom: 0; left: 0; right: 0; display: flex; background: var(--card); border-top: 1px solid var(--border); }
+  nav.tabs { position: fixed; bottom: 0; left: 0; right: 0; display: flex; background: var(--card); border-top: 1px solid var(--border); padding-bottom: env(safe-area-inset-bottom); }
   .tab { flex: 1; text-align: center; padding: 12px 0; color: var(--muted); font-size: 12px; background: none; border-radius: 0; }
   .tab.active { color: var(--accent); }
   h2 { font-size: 15px; margin: 16px 0 8px; }

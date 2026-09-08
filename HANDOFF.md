@@ -16,9 +16,16 @@ across this project's own comments up to this point - not yet cleaned up in this
 or the Python scripts, that's still outstanding). manifest.json and the viewport
 theme-color now match the light background; `sw.js` cache bumped to `v8`.
 
-**Still open from Edwin's own request, waiting on him:** the app name and its icon
-image. He asked "how do I change the name and image" without naming a new name or
-supplying an image - both are needed before that part can be done.
+**Icon replaced, name kept.** Edwin confirmed "Saulog OS" stays. He supplied a
+generated mockup image (rounded-square render on a background wall, with a drop
+shadow and padding around it, not a raw icon tile) - cropped that down to just the
+icon square (source crop box (870,258)-(1890,1278) on the 2816x1536 original) and
+resized to 512x512 to replace `icon.png`, matching the existing manifest slot. `sw.js`
+bumped to `v9`. Not yet re-verified how it looks once actually installed on his phone
+home screen. iOS PWAs generally don't auto-refresh a home screen icon after an
+update - if Kain/Saulog OS is already added to his home screen, he needs to remove and
+re-add it to see the new icon; opening it as a browser tab shows the update
+immediately.
 
 ## Built 2026-09-08 (round 2) — nav restructure, undo, no-zoom, wger fix, targets sync
 

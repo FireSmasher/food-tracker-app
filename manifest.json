@@ -3,8 +3,8 @@
   "short_name": "Saulog OS",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#14130f",
-  "theme_color": "#14130f",
+  "background_color": "#faf7f0",
+  "theme_color": "#faf7f0",
   "icons": [
     { "src": "icon.png", "sizes": "512x512", "type": "image/png" }
   ]

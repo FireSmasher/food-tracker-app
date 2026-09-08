@@ -47,7 +47,7 @@ async function getById(store, id) { return reqToPromise(tx(store).get(id)); }
 
 // ---------- Seed dataset foods, re-syncing bundled entries without touching custom ones ----------
 // Wrapped so a dead connection on first launch (elevator, subway, airplane mode) can't block
-// the whole app from rendering — it just skips the re-sync and uses whatever's already local.
+// the whole app from rendering. It just skips the re-sync and uses whatever's already local.
 async function seedFoodsIfEmpty() {
   try {
     const existing = await getAll('foods');
@@ -67,7 +67,7 @@ async function seedFoodsIfEmpty() {
 }
 
 // Same pattern as seedFoodsIfEmpty, for Buhat's exercise->muscle-group dictionary. Seeded
-// from Nippard's own LIFT HISTORY.md and CURRENT BLOCK.md (2026-09-08) — this is the
+// from Nippard's own LIFT HISTORY.md and CURRENT BLOCK.md (2026-09-08). This is the
 // small, stable, repeated set Edwin actually trains, not a generic exercise database.
 async function seedExercisesIfEmpty() {
   try {
@@ -113,7 +113,7 @@ function formatFullDate(isoDate) {
 const RESTAURANT_BUMP = 1.15;
 
 // Nippard system targets, set 14 Aug 2026 (~/Documents/claude/Nippard/03_NUTRITION/TARGETS.md).
-// This is only the offline/never-synced fallback now — see syncTargets() below, which
+// This is only the offline/never-synced fallback now. See syncTargets() below, which
 // overrides it from Supabase's `targets` table (the Nippard -> Kain direction of the sync).
 const DEFAULT_TARGETS = { kcal: 2300, protein: 150, fat: 70, carb: 265 };
 let TARGETS = { ...DEFAULT_TARGETS };
@@ -128,7 +128,7 @@ function loadCachedTargets() {
 }
 
 // Pulls Edwin's current Nippard targets from Supabase, if signed in and online. Read-only
-// from the app's side — only Nippard's own scripts/push-targets.py (service_role key) can
+// from the app's side, only Nippard's own scripts/push-targets.py (service_role key) can
 // write this table, see supabase/schema.sql. Falls back to whatever was last cached in
 // localStorage (or DEFAULT_TARGETS, if nothing's ever synced) on any failure.
 async function syncTargets() {
@@ -149,7 +149,7 @@ async function syncTargets() {
 
 // ---------- USDA FoodData Central search ----------
 // DEMO_KEY works with no signup (30 req/hr, 50/day per IP, shared by everyone using it).
-// A personal key removes that cap: https://fdc.nal.usda.gov/api-key-signup — pasted into
+// A personal key removes that cap: https://fdc.nal.usda.gov/api-key-signup. Pasted into
 // Settings and kept in this device's localStorage only, never in source code.
 const USDA_NUTRIENT_IDS = { kcal: 1008, protein: 1003, carb: 1005, fat: 1004 };
 
@@ -162,7 +162,7 @@ async function searchUSDA(query) {
   const dataType = encodeURIComponent('Foundation,SR Legacy,Survey (FNDDS)');
   const url = `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${encodeURIComponent(getApiKey())}&query=${encodeURIComponent(query)}&pageSize=20&dataType=${dataType}`;
 
-  // USDA's own gateway is measurably flaky — identical requests intermittently 400 from a
+  // USDA's own gateway is measurably flaky. Identical requests intermittently 400 from a
   // subset of their backend instances (confirmed: ~50% failure rate on repeated identical
   // calls, alternating pass/fail). One bounded retry absorbs that without user-visible
   // failure; a second real failure is treated as genuine and surfaces normally.
@@ -195,10 +195,10 @@ async function searchUSDA(query) {
 // dictionary.
 //
 // wger removed its old free-text suggest endpoint (/api/v2/exercise/search/, used by the
-// original build) — it now 404s outright, confirmed by hand 2026-09-08. Its replacement
+// original build). It now 404s outright, confirmed by hand 2026-09-08. Its replacement
 // list endpoint (exercise-translation) also has no working substring/fuzzy filter (its
 // `search=` param is a silent no-op that returns the whole ~3300-row table unfiltered,
-// also confirmed by hand), so this can only do an exact, case-sensitive name lookup —
+// also confirmed by hand), so this can only do an exact, case-sensitive name lookup,
 // tried as typed, then Title Cased, since wger's own names are Title Case. That's real
 // but narrower than "fuzzy search": it hits when the typed name matches wger's naming,
 // same overall fallback shape as before (local dictionary -> wger -> ask Edwin).
@@ -223,13 +223,13 @@ async function searchWger(name) {
 }
 
 // ---------- Supabase sync (Nippard/Sevro visibility) ----------
-// Best-effort, write-through, on-demand only — no offline queue. A log made while offline or
+// Best-effort, write-through, on-demand only, no offline queue. A log made while offline or
 // signed out stays local-only forever (this app doesn't retroactively sync past entries when
-// connectivity returns). That's a known limitation, not an oversight — see HANDOFF.md.
+// connectivity returns). That's a known limitation, not an oversight. See HANDOFF.md.
 //
 // config.js supplies SUPABASE_URL/SUPABASE_ANON_KEY. The anon key is meant to be public;
 // Row Level Security (supabase/schema.sql) is what actually protects the data, so a signed-in
-// session is required for every read/write this app makes — see supabase/schema.sql.
+// session is required for every read/write this app makes. See supabase/schema.sql.
 function supabaseConfigured() {
   return typeof SUPABASE_URL === 'string' && SUPABASE_URL && typeof SUPABASE_ANON_KEY === 'string' && SUPABASE_ANON_KEY;
 }
@@ -245,7 +245,7 @@ function clearSbSession() {
 }
 
 async function supabaseSignIn(email, password) {
-  if (!supabaseConfigured()) throw new Error('Supabase isn\'t configured yet — fill in config.js first.');
+  if (!supabaseConfigured()) throw new Error('Supabase isn\'t configured yet. Fill in config.js first.');
   const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY },
@@ -295,7 +295,7 @@ async function supabaseRequest(path, options = {}) {
 }
 
 // Returns the new row's Supabase id, or null if the write didn't happen (offline, signed
-// out, not configured, or a genuine failure) — callers must treat null as "stayed local-only."
+// out, not configured, or a genuine failure). Callers must treat null as "stayed local-only."
 async function syncInsert(table, row) {
   try {
     const res = await supabaseRequest(`/rest/v1/${table}`, {
@@ -323,18 +323,18 @@ function renderSyncStatus() {
   const signOutBtn = $('#syncSignOutBtn');
   if (!status) return;
   if (!supabaseConfigured()) {
-    status.textContent = 'Not configured — fill in config.js (see HANDOFF.md) to enable sync.';
+    status.textContent = 'Not configured. Fill in config.js (see HANDOFF.md) to enable sync.';
     signedOutBox.style.display = 'none';
     signOutBtn.style.display = 'none';
     return;
   }
   const session = loadSbSession();
   if (session) {
-    status.textContent = `✓ Signed in as ${session.email} — new logs sync while online.`;
+    status.textContent = `✓ Signed in as ${session.email}. New logs sync while online.`;
     signedOutBox.style.display = 'none';
     signOutBtn.style.display = 'inline-block';
   } else {
-    status.textContent = 'Signed out — logs stay phone-only until you sign in.';
+    status.textContent = 'Signed out. Logs stay phone-only until you sign in.';
     signedOutBox.style.display = 'block';
     signOutBtn.style.display = 'none';
   }
@@ -404,7 +404,7 @@ async function renderRecipeList() {
     <div class="card">
       <div class="row between">
         <strong>${escapeHtml(r.name)}</strong>
-        <button class="ghost small" data-del-recipe="${r.id}">delete</button>
+        <button class="ghost small danger" data-del-recipe="${r.id}">delete</button>
       </div>
       <div class="muted small"><em>${r.totalGrams}g total</em> · per 100g: <strong>${round1(r.kcal100)}</strong> kcal, P<strong>${round1(r.protein100)}</strong> C<strong>${round1(r.carb100)}</strong> F<strong>${round1(r.fat100)}</strong></div>
     </div>`).join('');
@@ -430,7 +430,7 @@ async function renderLog() {
             <div class="muted small"><em>${e.time} · ${e.grams}g${e.quantity ? ' · ' + escapeHtml(e.quantity) : ''}</em></div>
             ${e.notes ? `<div class="muted small notes">${escapeHtml(e.notes)}</div>` : ''}
           </div>
-          <button class="ghost small" data-del-log="${e.id}">×</button>
+          <button class="ghost small danger" data-del-log="${e.id}">×</button>
         </div>
         <div class="macros"><strong>${e.kcal}</strong> kcal · P <strong>${e.protein}</strong>g · C <strong>${e.carb}</strong>g · F <strong>${e.fat}</strong>g</div>
       </div>`).join('');
@@ -510,7 +510,7 @@ async function renderWorkouts() {
             <div class="small">${w.sets.map(s => `${s.weight}kg × ${s.reps}`).join(', ')}</div>
             ${w.notes ? `<div class="muted small notes">${escapeHtml(w.notes)}</div>` : ''}
           </div>
-          <button class="ghost small" data-del-workout="${w.id}">×</button>
+          <button class="ghost small danger" data-del-workout="${w.id}">×</button>
         </div>
       </div>`).join('');
     box.querySelectorAll('[data-del-workout]').forEach(btn => {
@@ -525,7 +525,7 @@ async function renderWorkouts() {
 
 // ---------- Undo (soft-delete for logs/workouts) ----------
 // A "deleted" row is hidden from render immediately but not actually removed from
-// IndexedDB/Supabase until UNDO_DELAY_MS passes with no undo — so a mis-tap is always
+// IndexedDB/Supabase until UNDO_DELAY_MS passes with no undo, so a mis-tap is always
 // recoverable, for both Kain's food log and Buhat's workout log.
 const UNDO_DELAY_MS = 5000;
 const pendingDeletes = { logs: new Set(), workouts: new Set() };
@@ -596,38 +596,13 @@ async function findExerciseByName(name) {
   return exercises.find(e => e.name.toLowerCase() === name.trim().toLowerCase());
 }
 
-// Live "count × g each" preview, shown under the calculator row.
-function updateQtyPreview() {
-  const count = Number($('#logCount').value);
-  const each = Number($('#logWeightEach').value);
-  const preview = $('#qtyPreview');
-  if (count > 0 && each > 0) {
-    preview.textContent = `= ${round1(count * each)}g total — tap "Use" to apply`;
-  } else {
-    preview.textContent = '';
-  }
-}
-function handleApplyQty() {
-  const count = Number($('#logCount').value);
-  const each = Number($('#logWeightEach').value);
-  if (!(count > 0) || !(each > 0)) { alert('Enter both a count and a weight each first.'); return; }
-  $('#logGrams').value = round1(count * each);
-  updateQtyPreview();
-}
-
 async function handleLogSubmit(e) {
   e.preventDefault();
   const name = $('#logName').value.trim();
   const grams = Number($('#logGrams').value);
-  const count = Number($('#logCount').value);
-  const each = Number($('#logWeightEach').value);
-  // The count/weight-each fields are a calculator that must be explicitly applied to Weight
-  // via "Use" — they never silently override it, so grams is always the single source of
-  // truth for the macro math. This label is just what gets displayed alongside the entry.
-  const quantity = (count > 0 && each > 0) ? `${count} × ${each}g each` : '';
   const notes = $('#logNotes').value.trim();
   const isRestaurant = $('#logRestaurant').checked;
-  if (!name || !grams || grams <= 0) { alert('Enter a food/recipe name and a weight in grams (or use the count calculator above and tap "Use").'); return; }
+  if (!name || !grams || grams <= 0) { alert('Enter a food/recipe name and a weight in grams.'); return; }
 
   let food = await findFoodByName(name);
   let recipe = !food ? await findRecipeByName(name) : null;
@@ -661,7 +636,7 @@ async function handleLogSubmit(e) {
   }
 
   const entry = {
-    date: currentDate, time: nowTimeStr(), name, grams, quantity, notes,
+    date: currentDate, time: nowTimeStr(), name, grams, notes,
     kcal: nutrition.kcal, protein: nutrition.protein, carb: nutrition.carb, fat: nutrition.fat,
     isRestaurant, itemType, itemId
   };
@@ -669,14 +644,13 @@ async function handleLogSubmit(e) {
   entry.id = id;
 
   const supaId = await syncInsert('food_logs', {
-    date: entry.date, time: entry.time, name: entry.name, grams: entry.grams, quantity: entry.quantity,
+    date: entry.date, time: entry.time, name: entry.name, grams: entry.grams,
     notes: entry.notes, kcal: entry.kcal, protein: entry.protein, carb: entry.carb, fat: entry.fat,
     is_restaurant: entry.isRestaurant, item_type: entry.itemType, item_id: String(entry.itemId)
   });
   if (supaId) { entry.supaId = supaId; await put('logs', entry); }
 
-  $('#logName').value = ''; $('#logGrams').value = ''; $('#logCount').value = ''; $('#logWeightEach').value = ''; $('#logNotes').value = ''; $('#logRestaurant').checked = false;
-  updateQtyPreview();
+  $('#logName').value = ''; $('#logGrams').value = ''; $('#logNotes').value = ''; $('#logRestaurant').checked = false;
   await refreshAll();
 }
 
@@ -688,7 +662,7 @@ function renderRecipeBuilder() {
   if (recipeIngredients.length === 0) { box.innerHTML = '<p class="muted small">No ingredients added yet.</p>'; return; }
   box.innerHTML = recipeIngredients.map((ing, i) => `
     <div class="row between">
-      <span><strong>${escapeHtml(ing.name)}</strong> — <em>${ing.grams}g</em></span>
+      <span><strong>${escapeHtml(ing.name)}</strong> · <em>${ing.grams}g</em></span>
       <button class="ghost small" data-rm-ing="${i}">×</button>
     </div>`).join('');
   box.querySelectorAll('[data-rm-ing]').forEach(btn => {
@@ -757,7 +731,7 @@ function handleAddSet() {
 }
 
 // Auto-tags the typed exercise to a muscle group: local dictionary first (bundled +
-// anything logged before), then wger.de live search, then asks Edwin directly — same
+// anything logged before), then wger.de live search, then asks Edwin directly, same
 // fallback shape as Kain's unknown-food flow.
 async function lookupMuscle() {
   const name = $('#wExercise').value.trim();
@@ -793,7 +767,7 @@ async function lookupMuscle() {
     await renderExerciseDatalist();
   } else {
     resolvedMuscle = { muscle: null, source: null };
-    tagEl.textContent = 'Not tagged — logged without a muscle group.';
+    tagEl.textContent = 'Not tagged. Logged without a muscle group.';
   }
 }
 
@@ -874,17 +848,17 @@ async function handleSearchSubmit(e) {
       };
     });
   } catch (err) {
-    $('#searchStatus').textContent = 'Search failed — check your connection and try again.';
+    $('#searchStatus').textContent = 'Search failed. Check your connection and try again.';
   }
 }
 
 // ---------- Settings ----------
-// The input is never re-populated with the stored key (even masked) — once saved, it's
+// The input is never re-populated with the stored key (even masked). Once saved, it's
 // write-only from the UI's perspective, so there's nothing on screen to shoulder-surf.
 function renderApiKeyStatus() {
   let stored = null;
   try { stored = localStorage.getItem('usda_api_key'); }
-  catch { $('#apiKeyStatus').textContent = 'This browser is blocking local storage (private mode?) — the key can\'t be saved here.'; return; }
+  catch { $('#apiKeyStatus').textContent = 'This browser is blocking local storage (private mode?). The key can\'t be saved here.'; return; }
   $('#apiKeyStatus').textContent = stored
     ? '✓ Personal key saved on this device.'
     : 'Using the shared demo key (30 searches/hour, shared with everyone else on it).';
@@ -895,14 +869,14 @@ function handleSaveApiKey() {
   if (!val) return;
   try { localStorage.setItem('usda_api_key', val); }
   catch {
-    $('#apiKeyStatus').textContent = 'Could not save — this browser is blocking local storage (private mode?).';
+    $('#apiKeyStatus').textContent = 'Could not save. This browser is blocking local storage (private mode?).';
     return;
   }
   renderApiKeyStatus();
 }
 function handleRemoveApiKey() {
   try { localStorage.removeItem('usda_api_key'); }
-  catch { $('#apiKeyStatus').textContent = 'Could not remove — this browser is blocking local storage (private mode?).'; return; }
+  catch { $('#apiKeyStatus').textContent = 'Could not remove. This browser is blocking local storage (private mode?).'; return; }
   renderApiKeyStatus();
 }
 
@@ -916,7 +890,7 @@ function shiftDate(days) {
 }
 
 // ---------- Tabs ----------
-// Bottom nav only ever holds Kain/Buhat now — Settings moved to the header gear icon
+// Bottom nav only ever holds Kain/Buhat now. Settings moved to the header gear icon
 // (⚙) so it doesn't compete for space in the tab bar. Kain itself hosts Log and
 // Recipes as an internal subnav rather than separate top-level tabs.
 function initTabs() {
@@ -965,9 +939,6 @@ async function init() {
   $('#prevDay').addEventListener('click', () => shiftDate(-1));
   $('#nextDay').addEventListener('click', () => shiftDate(1));
   $('#todayBtn').addEventListener('click', () => { currentDate = todayStr(); renderLog(); renderWorkouts(); });
-  $('#logCount').addEventListener('input', updateQtyPreview);
-  $('#logWeightEach').addEventListener('input', updateQtyPreview);
-  $('#applyQtyBtn').addEventListener('click', handleApplyQty);
   $('#searchFoodBtn').addEventListener('click', () => openSearchModal('logName'));
   $('#searchIngBtn').addEventListener('click', () => openSearchModal('ingName'));
   $('#closeSearchModal').addEventListener('click', closeSearchModal);

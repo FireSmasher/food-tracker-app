@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Saulog OS</title>
 <link rel="manifest" href="./manifest.json">
-<meta name="theme-color" content="#14130f">
+<meta name="theme-color" content="#faf7f0">
 <link rel="apple-touch-icon" href="./icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' https://api.nal.usda.gov https://wger.de https://*.supabase.co; img-src 'self' data:; script-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
 <style>
   @font-face { font-family: 'Satoshi'; src: url('./fonts/satoshi-400_normal.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: swap; }
@@ -18,8 +18,9 @@
   @font-face { font-family: 'Cormorant Garamond'; src: url('./fonts/cormorant-normal.woff2') format('woff2'); font-weight: 500 600; font-style: normal; font-display: swap; }
   @font-face { font-family: 'Cormorant Garamond'; src: url('./fonts/cormorant-italic.woff2') format('woff2'); font-weight: 500; font-style: italic; font-display: swap; }
   :root {
-    --bg: #14130f; --card: #1c1b16; --text: #ede8dc; --muted: #8c8577;
-    --accent: #b08d57; --border: #2e2b22; --danger: #a85c4e;
+    --bg: #faf7f0; --card: #ffffff; --text: #241f18; --muted: #6f6353;
+    --accent: #96723c; --border: #e3dbca; --danger: #b1503d;
+    --input-bg: #f6f1e4; --on-accent: #2b1f10;
     --font-display: 'Cormorant Garamond', Georgia, serif;
     --font-body: 'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
   }
@@ -27,7 +28,7 @@
   html, body { touch-action: pan-y; overscroll-behavior-x: none; }
   body { margin: 0; font-family: var(--font-body); background: var(--bg); color: var(--text); padding-bottom: 70px; }
   header { padding: calc(20px + env(safe-area-inset-top)) 16px 18px; text-align: center; border-bottom: 1px solid var(--border); position: relative; }
-  header h1 { font-family: var(--font-display); font-weight: 600; font-size: 30px; margin: 0; letter-spacing: 2px; }
+  header h1 { font-family: var(--font-body); font-weight: 700; font-size: 27px; margin: 0; letter-spacing: 1px; }
   .gear-btn { position: absolute; right: 16px; top: calc(20px + env(safe-area-inset-top)); background: none; color: var(--muted); font-size: 22px; padding: 0; line-height: 1; }
   .gear-btn.active { color: var(--accent); }
   .subnav { display: flex; gap: 8px; margin-bottom: 12px; }
@@ -48,15 +49,18 @@
   .macros { margin-top: 6px; font-size: 13px; color: var(--muted); }
   input[type=text], input[type=number], input[type=password], select {
     width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border);
-    background: #0e1015; color: var(--text); font-size: 16px; margin-bottom: 8px;
+    background: var(--input-bg); color: var(--text); font-size: 16px; margin-bottom: 8px;
   }
+  input.optional-input { font-size: 13px; color: var(--muted); }
   label.field { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
   button { cursor: pointer; border: none; border-radius: 8px; padding: 10px 14px; font-size: 14px; font-weight: 700; font-family: var(--font-body); }
-  button.primary { background: var(--accent); color: #0e1015; width: 100%; }
-  button.ghost { background: transparent; color: var(--danger); border: 1px solid var(--border); }
+  button.primary { background: var(--accent); color: var(--on-accent); width: 100%; }
+  button.ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
   button.ghost.small { padding: 4px 8px; font-size: 12px; }
+  button.ghost.danger { color: var(--danger); }
+  .undo-toast button.ghost { color: var(--accent); border-color: var(--accent); }
   .checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-  .badge { font-size: 10px; background: #382c1a; color: var(--accent); padding: 2px 6px; border-radius: 6px; margin-left: 4px; }
+  .badge { font-size: 10px; background: #f1e6d0; color: var(--accent); padding: 2px 6px; border-radius: 6px; margin-left: 4px; }
   .datenav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
   .datenav button { background: var(--card); color: var(--text); border: 1px solid var(--border); }
   #totals { display: flex; justify-content: space-between; background: var(--card); border-radius: 12px; padding: 14px; margin-bottom: 14px; border: 1px solid var(--border); }
@@ -67,23 +71,23 @@
   .tab { flex: 1; text-align: center; padding: 12px 0; color: var(--muted); font-size: 12px; background: none; border-radius: 0; }
   .tab.active { color: var(--accent); }
   h2 { font-family: var(--font-display); font-weight: 600; font-size: 19px; letter-spacing: 0.5px; margin: 18px 0 8px; }
-  #logDate { font-family: var(--font-display); font-size: 17px; letter-spacing: 0.3px; }
+  #logDate, #workoutDate { font-family: var(--font-body); font-weight: 700; font-size: 17px; letter-spacing: 0.2px; }
   .target-row { margin-bottom: 10px; }
   .target-row:last-child { margin-bottom: 0; }
-  .bar-track { height: 8px; border-radius: 4px; background: #0e1015; overflow: hidden; margin-top: 4px; }
+  .bar-track { height: 8px; border-radius: 4px; background: var(--input-bg); overflow: hidden; margin-top: 4px; }
   .bar-fill { height: 100%; border-radius: 4px; transition: width 0.2s; }
   .bar-good { background: var(--accent); }
   .bar-under { background: #4a5568; }
   .bar-over { background: var(--danger); }
   .notes { font-style: italic; }
-  .modal-overlay { position: fixed; inset: 0; background: rgba(10,9,7,0.72); display: flex; align-items: flex-end; z-index: 50; }
+  .modal-overlay { position: fixed; inset: 0; background: rgba(36,31,24,0.45); display: flex; align-items: flex-end; z-index: 50; }
   .modal-overlay[hidden] { display: none; }
   .modal-sheet { background: var(--bg); border-top: 1px solid var(--border); border-radius: 16px 16px 0 0; padding: 16px; width: 100%; max-width: 480px; margin: 0 auto; max-height: 82vh; overflow-y: auto; padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
   .search-result { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
   .search-result:last-child { border-bottom: none; }
   .search-result .name { font-size: 14px; }
   .search-result .macros-inline { font-size: 12px; color: var(--muted); margin-top: 2px; }
-  .search-result button { background: var(--accent); color: #14130f; padding: 6px 10px; font-size: 12px; flex-shrink: 0; }
+  .search-result button { background: var(--accent); color: var(--on-accent); padding: 6px 10px; font-size: 12px; flex-shrink: 0; }
 </style>
 </head>
 <body>
@@ -120,20 +124,11 @@
       </div>
       <datalist id="foodList"></datalist>
       <datalist id="recipeList"></datalist>
-      <label class="field">Weight (grams) — this is what the macros are calculated from</label>
+      <label class="field">Weight (grams)</label>
       <input type="number" id="logGrams" placeholder="e.g. 150" min="1">
 
-      <label class="field">Or calculate from a count (optional)</label>
-      <div class="row" style="margin-bottom:4px;">
-        <input type="number" id="logCount" placeholder="count, e.g. 4" min="0" step="any" style="margin-bottom:0;">
-        <span class="muted small">×</span>
-        <input type="number" id="logWeightEach" placeholder="g each, e.g. 90" min="0" step="any" style="margin-bottom:0;">
-        <button type="button" class="ghost small" id="applyQtyBtn">Use</button>
-      </div>
-      <div id="qtyPreview" class="muted small" style="margin-bottom:8px;"></div>
-
       <label class="field">Notes (optional)</label>
-      <input type="text" id="logNotes" placeholder="e.g. pre-workout, felt bloated" autocomplete="off">
+      <input type="text" id="logNotes" class="optional-input" placeholder="e.g. pre-workout, felt bloated" autocomplete="off">
       <div class="checkbox-row">
         <input type="checkbox" id="logRestaurant">
         <label for="logRestaurant" class="small">Eaten out / restaurant (applies +15% kcal &amp; fat correction)</label>
@@ -207,7 +202,7 @@
     <div id="setsPreview" class="muted small" style="margin-bottom:8px;"></div>
 
     <label class="field">Notes (optional)</label>
-    <input type="text" id="wNotes" placeholder="e.g. left shoulder tight" autocomplete="off">
+    <input type="text" id="wNotes" class="optional-input" placeholder="e.g. left shoulder tight" autocomplete="off">
     <button type="submit" class="primary">Log exercise</button>
   </form>
 
@@ -227,7 +222,7 @@
       <button type="button" class="ghost small" id="saveApiKeyBtn">Save</button>
     </div>
     <div id="apiKeyStatus" class="muted small"></div>
-    <button type="button" class="ghost small" id="removeApiKeyBtn" style="margin-top:8px;">Remove saved key</button>
+    <button type="button" class="ghost small danger" id="removeApiKeyBtn" style="margin-top:8px;">Remove saved key</button>
     <p class="muted small" style="margin-top:10px; margin-bottom:0;">Stored only on this device (never uploaded, never in the app's source code). Get a free key at <span style="color:var(--text)">fdc.nal.usda.gov/api-key-signup</span> if you outgrow the shared demo limit (30 searches/hour).</p>
   </div>
 
@@ -242,7 +237,7 @@
       <button type="button" class="primary" id="syncSignInBtn">Sign in</button>
     </div>
     <button type="button" class="ghost small" id="syncSignOutBtn" style="display:none;">Sign out</button>
-    <p class="muted small" style="margin-top:10px; margin-bottom:0;">Signing in lets every food and workout log also write to your private Supabase database, so a Nippard or Sevro session can read it when you ask for analysis. Nothing changes about what's stored on this phone — this only adds a copy going out, and only for entries logged while signed in and online.</p>
+    <p class="muted small" style="margin-top:10px; margin-bottom:0;">Signing in lets every food and workout log also write to your private Supabase database, so a Nippard or Sevro session can read it when you ask for analysis. Nothing changes about what's stored on this phone. This only adds a copy going out, and only for entries logged while signed in and online.</p>
   </div>
 </div>
 

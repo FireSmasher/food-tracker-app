@@ -413,24 +413,30 @@ async function handleSearchSubmit(e) {
 }
 
 // ---------- Settings ----------
+// The input is never re-populated with the stored key (even masked) — once saved, it's
+// write-only from the UI's perspective, so there's nothing on screen to shoulder-surf.
 function renderApiKeyStatus() {
   let stored = null;
   try { stored = localStorage.getItem('usda_api_key'); }
   catch { $('#apiKeyStatus').textContent = 'This browser is blocking local storage (private mode?) — the key can\'t be saved here.'; return; }
   $('#apiKeyStatus').textContent = stored
-    ? 'Using your personal key.'
+    ? '✓ Personal key saved on this device.'
     : 'Using the shared demo key (30 searches/hour, shared with everyone else on it).';
-  $('#apiKeyInput').value = stored || '';
+  $('#apiKeyInput').value = '';
 }
 function handleSaveApiKey() {
   const val = $('#apiKeyInput').value.trim();
-  try {
-    if (val) localStorage.setItem('usda_api_key', val);
-    else localStorage.removeItem('usda_api_key');
-  } catch {
+  if (!val) return;
+  try { localStorage.setItem('usda_api_key', val); }
+  catch {
     $('#apiKeyStatus').textContent = 'Could not save — this browser is blocking local storage (private mode?).';
     return;
   }
+  renderApiKeyStatus();
+}
+function handleRemoveApiKey() {
+  try { localStorage.removeItem('usda_api_key'); }
+  catch { $('#apiKeyStatus').textContent = 'Could not remove — this browser is blocking local storage (private mode?).'; return; }
   renderApiKeyStatus();
 }
 
@@ -472,6 +478,7 @@ async function init() {
   $('#closeSearchModal').addEventListener('click', closeSearchModal);
   $('#searchForm').addEventListener('submit', handleSearchSubmit);
   $('#saveApiKeyBtn').addEventListener('click', handleSaveApiKey);
+  $('#removeApiKeyBtn').addEventListener('click', handleRemoveApiKey);
   renderApiKeyStatus();
 
   renderRecipeBuilder();

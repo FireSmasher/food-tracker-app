@@ -1,8 +1,9 @@
-const CACHE = 'food-tracker-v4';
+const CACHE = 'food-tracker-v5';
 const ASSETS = [
   './', './index.html', './app.js', './foods.json', './manifest.json', './icon.png',
   './fonts/satoshi-400_normal.woff2', './fonts/satoshi-400_italic.woff2',
-  './fonts/satoshi-500_normal.woff2', './fonts/satoshi-700_normal.woff2'
+  './fonts/satoshi-500_normal.woff2', './fonts/satoshi-700_normal.woff2',
+  './fonts/cormorant-normal.woff2', './fonts/cormorant-italic.woff2'
 ];
 const NETWORK_TIMEOUT_MS = 4000;
 
@@ -27,13 +28,15 @@ function fetchWithTimeout(request) {
 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
-  const isOwnAsset = url.origin === self.location.origin;
+
+  // Cross-origin requests (USDA search) are never cached, so don't wrap them in our
+  // own-asset timeout/fallback logic — that combination produced a hard network error
+  // on any slow response instead of just letting the browser's own fetch behavior run.
+  if (url.origin !== self.location.origin) return;
 
   e.respondWith(
     fetchWithTimeout(e.request).then(res => {
-      // Only cache our own static assets — not third-party API responses, which
-      // shouldn't be served stale and would otherwise grow the cache unbounded.
-      if (isOwnAsset && e.request.method === 'GET') {
+      if (e.request.method === 'GET') {
         const clone = res.clone();
         caches.open(CACHE).then(c => c.put(e.request, clone));
       }

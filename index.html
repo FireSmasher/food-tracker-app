@@ -9,15 +9,14 @@
 <link rel="apple-touch-icon" href="./icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.nal.usda.gov; img-src 'self' data:; script-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&display=swap" rel="stylesheet">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' https://api.nal.usda.gov; img-src 'self' data:; script-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
 <style>
   @font-face { font-family: 'Satoshi'; src: url('./fonts/satoshi-400_normal.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: swap; }
   @font-face { font-family: 'Satoshi'; src: url('./fonts/satoshi-400_italic.woff2') format('woff2'); font-weight: 400; font-style: italic; font-display: swap; }
   @font-face { font-family: 'Satoshi'; src: url('./fonts/satoshi-500_normal.woff2') format('woff2'); font-weight: 500; font-style: normal; font-display: swap; }
   @font-face { font-family: 'Satoshi'; src: url('./fonts/satoshi-700_normal.woff2') format('woff2'); font-weight: 700; font-style: normal; font-display: swap; }
+  @font-face { font-family: 'Cormorant Garamond'; src: url('./fonts/cormorant-normal.woff2') format('woff2'); font-weight: 500 600; font-style: normal; font-display: swap; }
+  @font-face { font-family: 'Cormorant Garamond'; src: url('./fonts/cormorant-italic.woff2') format('woff2'); font-weight: 500; font-style: italic; font-display: swap; }
   :root {
     --bg: #14130f; --card: #1c1b16; --text: #ede8dc; --muted: #8c8577;
     --accent: #b08d57; --border: #2e2b22; --danger: #a85c4e;
@@ -146,10 +145,11 @@
   <div class="card">
     <label class="field">USDA FoodData Central API key</label>
     <div class="row" style="margin-bottom:8px;">
-      <input type="text" id="apiKeyInput" placeholder="DEMO_KEY (default, rate-limited)" autocomplete="off" style="margin-bottom:0;">
+      <input type="password" id="apiKeyInput" placeholder="Paste your key" autocomplete="off" style="margin-bottom:0;">
       <button type="button" class="ghost small" id="saveApiKeyBtn">Save</button>
     </div>
     <div id="apiKeyStatus" class="muted small"></div>
+    <button type="button" class="ghost small" id="removeApiKeyBtn" style="margin-top:8px;">Remove saved key</button>
     <p class="muted small" style="margin-top:10px; margin-bottom:0;">Stored only on this device (never uploaded, never in the app's source code). Get a free key at <span style="color:var(--text)">fdc.nal.usda.gov/api-key-signup</span> if you outgrow the shared demo limit (30 searches/hour).</p>
   </div>
 </div>

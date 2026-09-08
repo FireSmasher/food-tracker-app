@@ -1,7 +1,26 @@
 # Handoff: Kain -> Saulog OS
 
-Status as of 2026-09-08 (third round, same day). Read this before touching the next
+Status as of 2026-09-08 (fourth round, same day). Read this before touching the next
 phase of this project.
+
+## Renamed 2026-09-08: repo is now FireSmasher/saulog-os
+
+The GitHub repo was renamed from `food-tracker-app` to `saulog-os` (Edwin's request,
+matching the app's display name). Everything below that still says
+`FireSmasher/food-tracker-app` or `firesmasher.github.io/food-tracker-app` is
+historical record of what was true in that round, not current fact.
+
+**Current values, use these:**
+- GitHub repo: `FireSmasher/saulog-os`
+- Live URL: **https://firesmasher.github.io/saulog-os/**
+- Local source directory is UNCHANGED: still `~/food-tracker-app`. Only the GitHub
+  name changed, not the local folder. `git remote -v` in that directory already points
+  at the new URL (`gh repo rename` updated it automatically), confirmed working.
+- The **old URL 404s outright** (confirmed by hand) — GitHub Pages does not redirect
+  a renamed repo's Pages site the way it redirects git clone/push. Any bookmark or
+  home-screen shortcut pointing at the old `food-tracker-app` URL is dead. Edwin needs
+  to remove the old home-screen icon and re-add from the new URL (see his own
+  instructions for that, given directly in chat, not repeated here).
 
 ## Built 2026-09-08 (round 3) - light theme, UX cleanup
 

@@ -157,7 +157,7 @@ async function renderRecipeList() {
         <strong>${escapeHtml(r.name)}</strong>
         <button class="ghost small" data-del-recipe="${r.id}">delete</button>
       </div>
-      <div class="muted small">${r.totalGrams}g total · per 100g: ${round1(r.kcal100)} kcal, P${round1(r.protein100)} C${round1(r.carb100)} F${round1(r.fat100)}</div>
+      <div class="muted small"><em>${r.totalGrams}g total</em> · per 100g: <strong>${round1(r.kcal100)}</strong> kcal, P<strong>${round1(r.protein100)}</strong> C<strong>${round1(r.carb100)}</strong> F<strong>${round1(r.fat100)}</strong></div>
     </div>`).join('');
   box.querySelectorAll('[data-del-recipe]').forEach(btn => {
     btn.onclick = async () => { await del('recipes', Number(btn.dataset.delRecipe)); await refreshAll(); };
@@ -178,12 +178,12 @@ async function renderLog() {
         <div class="row between">
           <div>
             <strong>${escapeHtml(e.name)}</strong> ${e.isRestaurant ? '<span class="badge">restaurant</span>' : ''}
-            <div class="muted small">${e.time} · ${e.grams}g${e.quantity ? ' · ' + escapeHtml(e.quantity) : ''}</div>
+            <div class="muted small"><em>${e.time} · ${e.grams}g${e.quantity ? ' · ' + escapeHtml(e.quantity) : ''}</em></div>
             ${e.notes ? `<div class="muted small notes">${escapeHtml(e.notes)}</div>` : ''}
           </div>
           <button class="ghost small" data-del-log="${e.id}">×</button>
         </div>
-        <div class="macros">${e.kcal} kcal · P ${e.protein}g · C ${e.carb}g · F ${e.fat}g</div>
+        <div class="macros"><strong>${e.kcal}</strong> kcal · P <strong>${e.protein}</strong>g · C <strong>${e.carb}</strong>g · F <strong>${e.fat}</strong>g</div>
       </div>`).join('');
     box.querySelectorAll('[data-del-log]').forEach(btn => {
       btn.onclick = async () => { await del('logs', Number(btn.dataset.delLog)); await renderLog(); await renderTotals(); };
@@ -229,8 +229,8 @@ function renderTargets(totals) {
     return `
       <div class="target-row">
         <div class="row between small">
-          <span>${r.label}</span>
-          <span class="muted">${round1(val)} / ${target}${r.unit} · ${statusText}</span>
+          <strong>${r.label}</strong>
+          <span class="muted"><strong>${round1(val)}</strong> / ${target}${r.unit} · <em>${statusText}</em></span>
         </div>
         <div class="bar-track"><div class="bar-fill ${barClass}" style="width:${pct}%"></div></div>
       </div>`;
@@ -309,7 +309,7 @@ function renderRecipeBuilder() {
   if (recipeIngredients.length === 0) { box.innerHTML = '<p class="muted small">No ingredients added yet.</p>'; return; }
   box.innerHTML = recipeIngredients.map((ing, i) => `
     <div class="row between">
-      <span>${escapeHtml(ing.name)} — ${ing.grams}g</span>
+      <span><strong>${escapeHtml(ing.name)}</strong> — <em>${ing.grams}g</em></span>
       <button class="ghost small" data-rm-ing="${i}">×</button>
     </div>`).join('');
   box.querySelectorAll('[data-rm-ing]').forEach(btn => {
@@ -385,12 +385,12 @@ async function handleSearchSubmit(e) {
       $('#searchStatus').textContent = `No matches for "${query}". You can close this and enter it manually.`;
       return;
     }
-    $('#searchStatus').textContent = `${results.length} result${results.length === 1 ? '' : 's'} · values per 100g`;
+    $('#searchStatus').innerHTML = `<strong>${results.length}</strong> result${results.length === 1 ? '' : 's'} · <em>values per 100g</em>`;
     $('#searchResults').innerHTML = results.map((r, i) => `
       <div class="search-result">
         <div>
-          <div class="name">${escapeHtml(r.name)}</div>
-          <div class="macros-inline">${round1(r.kcal100)} kcal · P${round1(r.protein100)} C${round1(r.carb100)} F${round1(r.fat100)}</div>
+          <div class="name"><strong>${escapeHtml(r.name)}</strong></div>
+          <div class="macros-inline"><strong>${round1(r.kcal100)}</strong> kcal · P<strong>${round1(r.protein100)}</strong> C<strong>${round1(r.carb100)}</strong> F<strong>${round1(r.fat100)}</strong></div>
         </div>
         <button type="button" data-pick="${i}">Use</button>
       </div>`).join('');

@@ -1,5 +1,9 @@
-const CACHE = 'food-tracker-v3';
-const ASSETS = ['./', './index.html', './app.js', './foods.json', './manifest.json', './icon.png'];
+const CACHE = 'food-tracker-v4';
+const ASSETS = [
+  './', './index.html', './app.js', './foods.json', './manifest.json', './icon.png',
+  './fonts/satoshi-400_normal.woff2', './fonts/satoshi-400_italic.woff2',
+  './fonts/satoshi-500_normal.woff2', './fonts/satoshi-700_normal.woff2'
+];
 const NETWORK_TIMEOUT_MS = 4000;
 
 self.addEventListener('install', e => {

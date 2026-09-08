@@ -9,16 +9,20 @@
 <link rel="apple-touch-icon" href="./icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://api.nal.usda.gov; img-src 'self' data:; script-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.nal.usda.gov; img-src 'self' data:; script-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Inter:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&display=swap" rel="stylesheet">
 <style>
+  @font-face { font-family: 'Satoshi'; src: url('./fonts/satoshi-400_normal.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: swap; }
+  @font-face { font-family: 'Satoshi'; src: url('./fonts/satoshi-400_italic.woff2') format('woff2'); font-weight: 400; font-style: italic; font-display: swap; }
+  @font-face { font-family: 'Satoshi'; src: url('./fonts/satoshi-500_normal.woff2') format('woff2'); font-weight: 500; font-style: normal; font-display: swap; }
+  @font-face { font-family: 'Satoshi'; src: url('./fonts/satoshi-700_normal.woff2') format('woff2'); font-weight: 700; font-style: normal; font-display: swap; }
   :root {
     --bg: #14130f; --card: #1c1b16; --text: #ede8dc; --muted: #8c8577;
     --accent: #b08d57; --border: #2e2b22; --danger: #a85c4e;
     --font-display: 'Cormorant Garamond', Georgia, serif;
-    --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-body: 'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
   }
   * { box-sizing: border-box; }
   body { margin: 0; font-family: var(--font-body); background: var(--bg); color: var(--text); padding-bottom: 70px; }
@@ -37,7 +41,7 @@
     background: #0e1015; color: var(--text); font-size: 15px; margin-bottom: 8px;
   }
   label.field { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
-  button { cursor: pointer; border: none; border-radius: 8px; padding: 10px 14px; font-size: 14px; font-weight: 600; }
+  button { cursor: pointer; border: none; border-radius: 8px; padding: 10px 14px; font-size: 14px; font-weight: 700; font-family: var(--font-body); }
   button.primary { background: var(--accent); color: #0e1015; width: 100%; }
   button.ghost { background: transparent; color: var(--danger); border: 1px solid var(--border); }
   button.ghost.small { padding: 4px 8px; font-size: 12px; }

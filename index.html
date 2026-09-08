@@ -63,6 +63,7 @@
   .bar-over { background: var(--danger); }
   .notes { font-style: italic; }
   .modal-overlay { position: fixed; inset: 0; background: rgba(10,9,7,0.72); display: flex; align-items: flex-end; z-index: 50; }
+  .modal-overlay[hidden] { display: none; }
   .modal-sheet { background: var(--bg); border-top: 1px solid var(--border); border-radius: 16px 16px 0 0; padding: 16px; width: 100%; max-width: 480px; margin: 0 auto; max-height: 82vh; overflow-y: auto; padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
   .search-result { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
   .search-result:last-child { border-bottom: none; }

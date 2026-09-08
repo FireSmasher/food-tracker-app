@@ -38,16 +38,23 @@ async function del(store, id) { return reqToPromise(tx(store, 'readwrite').delet
 async function getById(store, id) { return reqToPromise(tx(store).get(id)); }
 
 // ---------- Seed dataset foods, re-syncing bundled entries without touching custom ones ----------
+// Wrapped so a dead connection on first launch (elevator, subway, airplane mode) can't block
+// the whole app from rendering — it just skips the re-sync and uses whatever's already local.
 async function seedFoodsIfEmpty() {
-  const existing = await getAll('foods');
-  const existingByName = new Map(existing.map(f => [f.name.toLowerCase(), f]));
-  const res = await fetch('./foods.json');
-  const dataset = await res.json();
-  for (const f of dataset) {
-    const match = existingByName.get(f.name.toLowerCase());
-    const row = { name: f.name, kcal100: f.kcal, protein100: f.protein, carb100: f.carb, fat100: f.fat, source: 'dataset' };
-    if (match) { row.id = match.id; await put('foods', row); }
-    else { await add('foods', row); }
+  try {
+    const existing = await getAll('foods');
+    const existingByName = new Map(existing.map(f => [f.name.toLowerCase(), f]));
+    const res = await fetch('./foods.json');
+    if (!res.ok) throw new Error(`foods.json fetch failed (${res.status})`);
+    const dataset = await res.json();
+    for (const f of dataset) {
+      const match = existingByName.get(f.name.toLowerCase());
+      const row = { name: f.name, kcal100: f.kcal, protein100: f.protein, carb100: f.carb, fat100: f.fat, source: 'dataset' };
+      if (match) { row.id = match.id; await put('foods', row); }
+      else { await add('foods', row); }
+    }
+  } catch (err) {
+    console.warn('Food dataset sync skipped (offline or unreachable):', err);
   }
 }
 
@@ -86,7 +93,8 @@ const TARGETS = { kcal: 2300, protein: 150, fat: 70, carb: 265 };
 const USDA_NUTRIENT_IDS = { kcal: 1008, protein: 1003, carb: 1005, fat: 1004 };
 
 function getApiKey() {
-  return localStorage.getItem('usda_api_key') || 'DEMO_KEY';
+  try { return localStorage.getItem('usda_api_key') || 'DEMO_KEY'; }
+  catch { return 'DEMO_KEY'; }
 }
 
 async function searchUSDA(query) {
@@ -258,10 +266,11 @@ async function handleLogSubmit(e) {
   if (!food && !recipe) {
     // Unknown food -> prompt for manual macro entry (per 100g), save to library
     const kcal = Number(prompt(`"${name}" is not in your library.\nEnter calories per 100g:`));
-    if (isNaN(kcal)) return;
-    const protein = Number(prompt('Protein per 100g (g):') || 0);
-    const carb = Number(prompt('Carbs per 100g (g):') || 0);
-    const fat = Number(prompt('Fat per 100g (g):') || 0);
+    if (!isFinite(kcal) || kcal < 0) { alert('Calories must be a number ≥ 0. Nothing was logged.'); return; }
+    const parseMacro = raw => { const n = Number(raw || 0); return isFinite(n) && n >= 0 ? n : 0; };
+    const protein = parseMacro(prompt('Protein per 100g (g):'));
+    const carb = parseMacro(prompt('Carbs per 100g (g):'));
+    const fat = parseMacro(prompt('Fat per 100g (g):'));
     const newFood = { name, kcal100: kcal, protein100: protein, carb100: carb, fat100: fat, source: 'custom' };
     const id = await add('foods', newFood);
     newFood.id = id;
@@ -405,7 +414,9 @@ async function handleSearchSubmit(e) {
 
 // ---------- Settings ----------
 function renderApiKeyStatus() {
-  const stored = localStorage.getItem('usda_api_key');
+  let stored = null;
+  try { stored = localStorage.getItem('usda_api_key'); }
+  catch { $('#apiKeyStatus').textContent = 'This browser is blocking local storage (private mode?) — the key can\'t be saved here.'; return; }
   $('#apiKeyStatus').textContent = stored
     ? 'Using your personal key.'
     : 'Using the shared demo key (30 searches/hour, shared with everyone else on it).';
@@ -413,8 +424,13 @@ function renderApiKeyStatus() {
 }
 function handleSaveApiKey() {
   const val = $('#apiKeyInput').value.trim();
-  if (val) localStorage.setItem('usda_api_key', val);
-  else localStorage.removeItem('usda_api_key');
+  try {
+    if (val) localStorage.setItem('usda_api_key', val);
+    else localStorage.removeItem('usda_api_key');
+  } catch {
+    $('#apiKeyStatus').textContent = 'Could not save — this browser is blocking local storage (private mode?).';
+    return;
+  }
   renderApiKeyStatus();
 }
 

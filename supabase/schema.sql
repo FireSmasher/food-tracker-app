@@ -66,6 +66,14 @@ create policy "workout_logs: owner update" on public.workout_logs
 create policy "workout_logs: owner delete" on public.workout_logs
   for delete using (auth.uid() = user_id);
 
+-- RLS restricts access, it doesn't grant it — a role still needs the baseline table-level
+-- privilege before Postgres even evaluates a policy. If "Automatically expose new tables"
+-- is off at project creation (the recommended setting, see HANDOFF.md), these grants are
+-- NOT applied automatically and both the app (authenticated) and Nippard/Sevro's read
+-- script (service_role) get a bare 42501 permission-denied without them.
+grant select, insert, update, delete on public.food_logs to authenticated, service_role;
+grant select, insert, update, delete on public.workout_logs to authenticated, service_role;
+
 -- Nippard/Sevro read access goes through scripts/query-logs.py using the service_role key,
 -- which bypasses RLS by design (it's a trusted server-side key, never shipped in this repo).
 -- No separate policy is needed for that path.

@@ -67,20 +67,44 @@ own migration docs.
 3. ✅ **Done** — Project URL and publishable key are live in `config.js`,
    committed and pushed. Verified locally: Settings → Sync now shows the
    sign-in form instead of "Not configured."
-4. ⬜ **Still Edwin's to do** — Project Settings → API Keys → Secret keys →
-   reveal the `sb_secret_...` key → put it in a new local file, created and
-   edited entirely outside this chat (e.g. `nano ~/.saulog-os-service.json`
-   in Terminal, never pasted here):
-   ```json
-   { "supabase_url": "https://dmyelqbeifdirjpqvhsl.supabase.co", "service_role_key": "sb_secret_..." }
+4. ✅ **Done** — `~/.saulog-os-service.json` created by Edwin (Claude never
+   read its contents, only checked shape/validity via `python3 -c` scripts
+   that redact the key value before printing anything). Took two rounds to
+   get right — first attempt saved just the raw key with no JSON wrapper,
+   second attempt had the wrapper but the value wasn't quote-wrapped. Once
+   valid, `scripts/query-logs.py --today` still failed with **Postgres
+   permission denied (42501)** on both tables — turning off "automatically
+   expose new tables" in Step 1 also withheld the baseline table-level
+   grants that `service_role`/`authenticated` need before RLS policies even
+   get evaluated (RLS doesn't substitute for a GRANT, it restricts one).
+   Fixed by running, in the SQL editor:
+   ```sql
+   grant select, insert, update, delete on public.food_logs to authenticated, service_role;
+   grant select, insert, update, delete on public.workout_logs to authenticated, service_role;
    ```
-5. ⬜ **Still Edwin's to do** — Authentication → Users → Add user → Create
-   new user, his own email + a password (with Auto Confirm checked), which
-   becomes what he types into the app's own Settings → Sync → Sign in.
+   This isn't in `supabase/schema.sql` yet — if a future rebuild reruns the
+   schema on a fresh project with the same "expose new tables" off setting,
+   add these two GRANTs to the bottom of that file first. Verified after
+   the fix: `scripts/query-logs.py --today` returns `{"food_logs": [],
+   "workout_logs": []}` — real connection, real auth, real (empty) result.
+5. ✅ **Done** — one user confirmed in Authentication → Users:
+   `fortsaulog@gmail.com`, created 2026-09-08, provider `Email`. "Last sign
+   in at" was still blank as of this check — meaning the account exists but
+   nobody has signed into the app with it yet. That's the one remaining
+   real-world step, and it's Edwin's alone (typing a password into the app
+   is exactly the kind of action Claude never does, permission or not):
+   open the app (phone or https://firesmasher.github.io/food-tracker-app/),
+   Settings → Sync, sign in with that email/password. Once done, log
+   anything in Kain or Buhat and `scripts/query-logs.py --today` should
+   show it — that's the true end-to-end check, and only Edwin can trigger
+   the first half of it.
 
-Once 4 and 5 are done: sign in on the phone (Settings → Sync), and
-`scripts/query-logs.py` becomes usable by Nippard/Sevro immediately — no
-further deploy needed for either of those two steps.
+**No duplication risk** — re-verified 2026-09-08: `git remote -v` in
+`~/food-tracker-app` still points at `FireSmasher/food-tracker-app`, no
+second `food-tracker`/`saulog` directory exists anywhere under `~`, the
+Supabase org has exactly one project, and `config.js`'s `SUPABASE_URL`
+matches that project's ref (`dmyelqbeifdirjpqvhsl`). Everything landed in
+the same app this handoff has pointed to from the start.
 
 ### Known limitations (explicit, not silently glossed over)
 

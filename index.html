@@ -135,6 +135,19 @@
   <div id="recipesBox"></div>
 </div>
 
+<div id="panel-settings" class="panel">
+  <h2>Settings</h2>
+  <div class="card">
+    <label class="field">USDA FoodData Central API key</label>
+    <div class="row" style="margin-bottom:8px;">
+      <input type="text" id="apiKeyInput" placeholder="DEMO_KEY (default, rate-limited)" autocomplete="off" style="margin-bottom:0;">
+      <button type="button" class="ghost small" id="saveApiKeyBtn">Save</button>
+    </div>
+    <div id="apiKeyStatus" class="muted small"></div>
+    <p class="muted small" style="margin-top:10px; margin-bottom:0;">Stored only on this device (never uploaded, never in the app's source code). Get a free key at <span style="color:var(--text)">fdc.nal.usda.gov/api-key-signup</span> if you outgrow the shared demo limit (30 searches/hour).</p>
+  </div>
+</div>
+
 <div id="searchModal" class="modal-overlay" hidden>
   <div class="modal-sheet">
     <div class="row between">
@@ -153,6 +166,7 @@
 <nav class="tabs">
   <button class="tab active" data-tab="log">Log</button>
   <button class="tab" data-tab="recipes">Recipes</button>
+  <button class="tab" data-tab="settings">Settings</button>
 </nav>
 
 <script src="./app.js"></script>

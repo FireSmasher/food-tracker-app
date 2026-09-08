@@ -80,13 +80,17 @@ const RESTAURANT_BUMP = 1.15;
 const TARGETS = { kcal: 2300, protein: 150, fat: 70, carb: 265 };
 
 // ---------- USDA FoodData Central search ----------
-// Free, no signup required for light personal use (DEMO_KEY: 30 req/hr, 50/day per IP).
-// For higher limits, get a free key at https://fdc.nal.usda.gov/api-key-signup and swap it in below.
-const USDA_API_KEY = 'DEMO_KEY';
+// DEMO_KEY works with no signup (30 req/hr, 50/day per IP, shared by everyone using it).
+// A personal key removes that cap: https://fdc.nal.usda.gov/api-key-signup — pasted into
+// Settings and kept in this device's localStorage only, never in source code.
 const USDA_NUTRIENT_IDS = { kcal: 1008, protein: 1003, carb: 1005, fat: 1004 };
 
+function getApiKey() {
+  return localStorage.getItem('usda_api_key') || 'DEMO_KEY';
+}
+
 async function searchUSDA(query) {
-  const url = `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${USDA_API_KEY}&query=${encodeURIComponent(query)}&pageSize=20&dataType=Foundation,SR%20Legacy,Survey%20(FNDDS)`;
+  const url = `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${encodeURIComponent(getApiKey())}&query=${encodeURIComponent(query)}&pageSize=20&dataType=Foundation,SR%20Legacy,Survey%20(FNDDS)`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`USDA search failed (${res.status})`);
   const data = await res.json();
@@ -399,6 +403,21 @@ async function handleSearchSubmit(e) {
   }
 }
 
+// ---------- Settings ----------
+function renderApiKeyStatus() {
+  const stored = localStorage.getItem('usda_api_key');
+  $('#apiKeyStatus').textContent = stored
+    ? 'Using your personal key.'
+    : 'Using the shared demo key (30 searches/hour, shared with everyone else on it).';
+  $('#apiKeyInput').value = stored || '';
+}
+function handleSaveApiKey() {
+  const val = $('#apiKeyInput').value.trim();
+  if (val) localStorage.setItem('usda_api_key', val);
+  else localStorage.removeItem('usda_api_key');
+  renderApiKeyStatus();
+}
+
 // ---------- Date navigation ----------
 function shiftDate(days) {
   const d = new Date(currentDate);
@@ -436,6 +455,8 @@ async function init() {
   $('#searchIngBtn').addEventListener('click', () => openSearchModal('ingName'));
   $('#closeSearchModal').addEventListener('click', closeSearchModal);
   $('#searchForm').addEventListener('submit', handleSearchSubmit);
+  $('#saveApiKeyBtn').addEventListener('click', handleSaveApiKey);
+  renderApiKeyStatus();
 
   renderRecipeBuilder();
 

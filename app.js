@@ -37,14 +37,17 @@ async function put(store, obj) { return reqToPromise(tx(store, 'readwrite').put(
 async function del(store, id) { return reqToPromise(tx(store, 'readwrite').delete(id)); }
 async function getById(store, id) { return reqToPromise(tx(store).get(id)); }
 
-// ---------- Seed dataset foods on first run ----------
+// ---------- Seed dataset foods, re-syncing bundled entries without touching custom ones ----------
 async function seedFoodsIfEmpty() {
   const existing = await getAll('foods');
-  if (existing.length > 0) return;
+  const existingByName = new Map(existing.map(f => [f.name.toLowerCase(), f]));
   const res = await fetch('./foods.json');
   const dataset = await res.json();
   for (const f of dataset) {
-    await add('foods', { name: f.name, kcal100: f.kcal, protein100: f.protein, carb100: f.carb, fat100: f.fat, source: 'dataset' });
+    const match = existingByName.get(f.name.toLowerCase());
+    const row = { name: f.name, kcal100: f.kcal, protein100: f.protein, carb100: f.carb, fat100: f.fat, source: 'dataset' };
+    if (match) { row.id = match.id; await put('foods', row); }
+    else { await add('foods', row); }
   }
 }
 
@@ -68,6 +71,9 @@ function nowTimeStr() {
   return d.toTimeString().slice(0, 5);
 }
 const RESTAURANT_BUMP = 1.15;
+
+// Nippard system targets, set 14 Aug 2026 (~/Documents/claude/Nippard/03_NUTRITION/TARGETS.md)
+const TARGETS = { kcal: 2300, protein: 150, fat: 70, carb: 265 };
 
 // ---------- Rendering ----------
 const $ = sel => document.querySelector(sel);
@@ -155,6 +161,35 @@ async function renderTotals(entries) {
     <div class="tot"><span>${round1(totals.protein)}</span><label>protein g</label></div>
     <div class="tot"><span>${round1(totals.carb)}</span><label>carb g</label></div>
     <div class="tot"><span>${round1(totals.fat)}</span><label>fat g</label></div>`;
+  renderTargets(totals);
+}
+
+function renderTargets(totals) {
+  const rows = [
+    { key: 'kcal', label: 'Calories', unit: 'kcal', floor: false },
+    { key: 'protein', label: 'Protein', unit: 'g', floor: true },
+    { key: 'fat', label: 'Fat', unit: 'g', floor: true },
+    { key: 'carb', label: 'Carbs', unit: 'g', floor: false }
+  ];
+  $('#targets').innerHTML = rows.map(r => {
+    const val = totals[r.key];
+    const target = TARGETS[r.key];
+    const pct = Math.min(100, round1(val / target * 100));
+    const hit = r.floor ? val >= target : val <= target;
+    const over = val > target;
+    const barClass = r.floor ? (hit ? 'bar-good' : 'bar-under') : (over ? 'bar-over' : 'bar-good');
+    const statusText = r.floor
+      ? (hit ? '✓ floor met' : `${round1(target - val)}${r.unit} to floor`)
+      : (over ? `${round1(val - target)}${r.unit} over` : `${round1(target - val)}${r.unit} left`);
+    return `
+      <div class="target-row">
+        <div class="row between small">
+          <span>${r.label}</span>
+          <span class="muted">${round1(val)} / ${target}${r.unit} · ${statusText}</span>
+        </div>
+        <div class="bar-track"><div class="bar-fill ${barClass}" style="width:${pct}%"></div></div>
+      </div>`;
+  }).join('');
 }
 
 function escapeHtml(s) {

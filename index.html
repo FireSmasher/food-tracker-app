@@ -100,10 +100,18 @@
     </div>
     <datalist id="foodList"></datalist>
     <datalist id="recipeList"></datalist>
-    <label class="field">Weight (grams)</label>
+    <label class="field">Weight (grams) — this is what the macros are calculated from</label>
     <input type="number" id="logGrams" placeholder="e.g. 150" min="1">
-    <label class="field">Quantity (optional, e.g. "2 eggs", "1 cup")</label>
-    <input type="text" id="logQuantity" placeholder="e.g. 2 eggs" autocomplete="off">
+
+    <label class="field">Or calculate from a count (optional)</label>
+    <div class="row" style="margin-bottom:4px;">
+      <input type="number" id="logCount" placeholder="count, e.g. 4" min="0" step="any" style="margin-bottom:0;">
+      <span class="muted small">×</span>
+      <input type="number" id="logWeightEach" placeholder="g each, e.g. 90" min="0" step="any" style="margin-bottom:0;">
+      <button type="button" class="ghost small" id="applyQtyBtn">Use</button>
+    </div>
+    <div id="qtyPreview" class="muted small" style="margin-bottom:8px;"></div>
+
     <label class="field">Notes (optional)</label>
     <input type="text" id="logNotes" placeholder="e.g. pre-workout, felt bloated" autocomplete="off">
     <div class="checkbox-row">

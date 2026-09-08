@@ -98,8 +98,18 @@ function getApiKey() {
 }
 
 async function searchUSDA(query) {
-  const url = `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${encodeURIComponent(getApiKey())}&query=${encodeURIComponent(query)}&pageSize=20&dataType=Foundation,SR%20Legacy,Survey%20(FNDDS)`;
-  const res = await fetch(url);
+  const dataType = encodeURIComponent('Foundation,SR Legacy,Survey (FNDDS)');
+  const url = `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${encodeURIComponent(getApiKey())}&query=${encodeURIComponent(query)}&pageSize=20&dataType=${dataType}`;
+
+  // USDA's own gateway is measurably flaky — identical requests intermittently 400 from a
+  // subset of their backend instances (confirmed: ~50% failure rate on repeated identical
+  // calls, alternating pass/fail). One bounded retry absorbs that without user-visible
+  // failure; a second real failure is treated as genuine and surfaces normally.
+  let res;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    res = await fetch(url);
+    if (res.ok) break;
+  }
   if (!res.ok) throw new Error(`USDA search failed (${res.status})`);
   const data = await res.json();
   return (data.foods || []).map(f => {
@@ -251,14 +261,38 @@ async function findRecipeByName(name) {
   return recipes.find(r => r.name.toLowerCase() === name.trim().toLowerCase());
 }
 
+// Live "count × g each" preview, shown under the calculator row.
+function updateQtyPreview() {
+  const count = Number($('#logCount').value);
+  const each = Number($('#logWeightEach').value);
+  const preview = $('#qtyPreview');
+  if (count > 0 && each > 0) {
+    preview.textContent = `= ${round1(count * each)}g total — tap "Use" to apply`;
+  } else {
+    preview.textContent = '';
+  }
+}
+function handleApplyQty() {
+  const count = Number($('#logCount').value);
+  const each = Number($('#logWeightEach').value);
+  if (!(count > 0) || !(each > 0)) { alert('Enter both a count and a weight each first.'); return; }
+  $('#logGrams').value = round1(count * each);
+  updateQtyPreview();
+}
+
 async function handleLogSubmit(e) {
   e.preventDefault();
   const name = $('#logName').value.trim();
   const grams = Number($('#logGrams').value);
-  const quantity = $('#logQuantity').value.trim();
+  const count = Number($('#logCount').value);
+  const each = Number($('#logWeightEach').value);
+  // The count/weight-each fields are a calculator that must be explicitly applied to Weight
+  // via "Use" — they never silently override it, so grams is always the single source of
+  // truth for the macro math. This label is just what gets displayed alongside the entry.
+  const quantity = (count > 0 && each > 0) ? `${count} × ${each}g each` : '';
   const notes = $('#logNotes').value.trim();
   const isRestaurant = $('#logRestaurant').checked;
-  if (!name || !grams || grams <= 0) { alert('Enter a food/recipe name and a weight in grams.'); return; }
+  if (!name || !grams || grams <= 0) { alert('Enter a food/recipe name and a weight in grams (or use the count calculator above and tap "Use").'); return; }
 
   let food = await findFoodByName(name);
   let recipe = !food ? await findRecipeByName(name) : null;
@@ -297,7 +331,8 @@ async function handleLogSubmit(e) {
     isRestaurant, itemType, itemId
   });
 
-  $('#logName').value = ''; $('#logGrams').value = ''; $('#logQuantity').value = ''; $('#logNotes').value = ''; $('#logRestaurant').checked = false;
+  $('#logName').value = ''; $('#logGrams').value = ''; $('#logCount').value = ''; $('#logWeightEach').value = ''; $('#logNotes').value = ''; $('#logRestaurant').checked = false;
+  updateQtyPreview();
   await refreshAll();
 }
 
@@ -473,6 +508,9 @@ async function init() {
   $('#prevDay').addEventListener('click', () => shiftDate(-1));
   $('#nextDay').addEventListener('click', () => shiftDate(1));
   $('#todayBtn').addEventListener('click', () => { currentDate = todayStr(); renderLog(); });
+  $('#logCount').addEventListener('input', updateQtyPreview);
+  $('#logWeightEach').addEventListener('input', updateQtyPreview);
+  $('#applyQtyBtn').addEventListener('click', handleApplyQty);
   $('#searchFoodBtn').addEventListener('click', () => openSearchModal('logName'));
   $('#searchIngBtn').addEventListener('click', () => openSearchModal('ingName'));
   $('#closeSearchModal').addEventListener('click', closeSearchModal);

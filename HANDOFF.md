@@ -1,7 +1,24 @@
-# Handoff: Kain → Saulog OS
+# Handoff: Kain -> Saulog OS
 
-Status as of 2026-09-08 (second round, same day). Read this before touching the next
+Status as of 2026-09-08 (third round, same day). Read this before touching the next
 phase of this project.
+
+## Built 2026-09-08 (round 3) - light theme, UX cleanup
+
+Full light-mode palette (was dark-only since the original build), Satoshi bold for the
+app name and date headers instead of the serif display font, ghost buttons default to
+a neutral color with red reserved for an explicit `.danger` modifier on genuinely
+destructive actions (fixes Search having read as a warning/error), a smaller muted
+style for Notes inputs so they read as optional, and the count x weight-each
+calculator removed from Kain's log form entirely (Edwin: not useful). Also cleared
+every em dash from `index.html`/`app.js` copy and comments (standing rule, was broken
+across this project's own comments up to this point - not yet cleaned up in this file
+or the Python scripts, that's still outstanding). manifest.json and the viewport
+theme-color now match the light background; `sw.js` cache bumped to `v8`.
+
+**Still open from Edwin's own request, waiting on him:** the app name and its icon
+image. He asked "how do I change the name and image" without naming a new name or
+supplying an image - both are needed before that part can be done.
 
 ## Built 2026-09-08 (round 2) — nav restructure, undo, no-zoom, wger fix, targets sync
 

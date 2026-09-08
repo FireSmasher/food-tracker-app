@@ -118,5 +118,20 @@
 {"name":"Halloumi, grilled","kcal":321,"protein":22,"carb":2.2,"fat":25},
 
 {"name":"Jasmine rice, raw (Lidl)","kcal":344,"protein":7.3,"carb":78,"fat":0.6},
-{"name":"Jasmine rice, cooked (Lidl)","kcal":129,"protein":2.7,"carb":29,"fat":0.2}
+{"name":"Jasmine rice, cooked (Lidl)","kcal":129,"protein":2.7,"carb":29,"fat":0.2},
+
+{"name":"Chicken leg, raw, skin on","kcal":216,"protein":19,"carb":0,"fat":15},
+{"name":"Chicken leg, raw, skinless","kcal":172,"protein":20,"carb":0,"fat":9.8},
+{"name":"Chicken drumstick, raw, skin on","kcal":172,"protein":18.2,"carb":0,"fat":10.6},
+{"name":"Chicken drumstick, raw, skinless","kcal":143,"protein":19.5,"carb":0,"fat":6.9},
+{"name":"Chicken wing, raw","kcal":203,"protein":18.4,"carb":0,"fat":13.8},
+{"name":"Chicken breast, cooked, no skin","kcal":165,"protein":31,"carb":0,"fat":3.6},
+{"name":"Chicken thigh, cooked, skinless","kcal":209,"protein":26,"carb":0,"fat":10.9},
+{"name":"Whole chicken, roasted, with skin","kcal":239,"protein":27,"carb":0,"fat":14},
+{"name":"Beef sirloin steak, raw","kcal":151,"protein":22,"carb":0,"fat":6.4},
+{"name":"Beef ribeye, raw","kcal":291,"protein":19,"carb":0,"fat":24},
+{"name":"Pork chop, raw","kcal":159,"protein":20,"carb":0,"fat":8.2},
+{"name":"Pork belly, raw","kcal":518,"protein":9.3,"carb":0,"fat":53},
+{"name":"Lamb leg, raw","kcal":156,"protein":20,"carb":0,"fat":8},
+{"name":"Duck breast, raw, skinless","kcal":123,"protein":19.6,"carb":0,"fat":4.2}
 ]

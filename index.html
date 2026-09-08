@@ -61,6 +61,13 @@
   .bar-under { background: #4a5568; }
   .bar-over { background: var(--danger); }
   .notes { font-style: italic; }
+  .modal-overlay { position: fixed; inset: 0; background: rgba(10,9,7,0.72); display: flex; align-items: flex-end; z-index: 50; }
+  .modal-sheet { background: var(--bg); border-top: 1px solid var(--border); border-radius: 16px 16px 0 0; padding: 16px; width: 100%; max-width: 480px; margin: 0 auto; max-height: 82vh; overflow-y: auto; padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+  .search-result { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .search-result:last-child { border-bottom: none; }
+  .search-result .name { font-size: 14px; }
+  .search-result .macros-inline { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .search-result button { background: var(--accent); color: #14130f; padding: 6px 10px; font-size: 12px; flex-shrink: 0; }
 </style>
 </head>
 <body>
@@ -82,7 +89,10 @@
 
   <form id="logForm" class="card">
     <label class="field">Food or recipe name</label>
-    <input type="text" id="logName" list="foodList" placeholder="e.g. Chicken breast, raw" autocomplete="off">
+    <div class="row" style="margin-bottom:8px;">
+      <input type="text" id="logName" list="foodList" placeholder="e.g. Chicken breast, raw" autocomplete="off" style="margin-bottom:0;">
+      <button type="button" class="ghost small" id="searchFoodBtn" data-target="logName">Search</button>
+    </div>
     <datalist id="foodList"></datalist>
     <datalist id="recipeList"></datalist>
     <label class="field">Weight (grams)</label>
@@ -106,7 +116,10 @@
   <h2>Build a recipe</h2>
   <form id="ingForm" class="card">
     <label class="field">Ingredient (must exist in food library)</label>
-    <input type="text" id="ingName" list="foodList" autocomplete="off">
+    <div class="row" style="margin-bottom:8px;">
+      <input type="text" id="ingName" list="foodList" autocomplete="off" style="margin-bottom:0;">
+      <button type="button" class="ghost small" id="searchIngBtn" data-target="ingName">Search</button>
+    </div>
     <label class="field">Weight (grams)</label>
     <input type="number" id="ingGrams" min="1">
     <button type="submit" class="primary">Add ingredient</button>
@@ -120,6 +133,21 @@
 
   <h2>Saved recipes</h2>
   <div id="recipesBox"></div>
+</div>
+
+<div id="searchModal" class="modal-overlay" hidden>
+  <div class="modal-sheet">
+    <div class="row between">
+      <h2 style="margin:0;">Search foods</h2>
+      <button type="button" class="ghost small" id="closeSearchModal">Close</button>
+    </div>
+    <form id="searchForm" class="row" style="margin-top:10px;">
+      <input type="text" id="searchInput" placeholder="e.g. chicken legs" autocomplete="off" style="margin-bottom:0;">
+      <button type="submit" class="primary" style="width:auto; white-space:nowrap;">Go</button>
+    </form>
+    <div id="searchStatus" class="muted small" style="margin-top:8px;"></div>
+    <div id="searchResults"></div>
+  </div>
 </div>
 
 <nav class="tabs">

@@ -79,6 +79,34 @@ const RESTAURANT_BUMP = 1.15;
 // Nippard system targets, set 14 Aug 2026 (~/Documents/claude/Nippard/03_NUTRITION/TARGETS.md)
 const TARGETS = { kcal: 2300, protein: 150, fat: 70, carb: 265 };
 
+// ---------- USDA FoodData Central search ----------
+// Free, no signup required for light personal use (DEMO_KEY: 30 req/hr, 50/day per IP).
+// For higher limits, get a free key at https://fdc.nal.usda.gov/api-key-signup and swap it in below.
+const USDA_API_KEY = 'DEMO_KEY';
+const USDA_NUTRIENT_IDS = { kcal: 1008, protein: 1003, carb: 1005, fat: 1004 };
+
+async function searchUSDA(query) {
+  const url = `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${USDA_API_KEY}&query=${encodeURIComponent(query)}&pageSize=20&dataType=Foundation,SR%20Legacy,Survey%20(FNDDS)`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`USDA search failed (${res.status})`);
+  const data = await res.json();
+  return (data.foods || []).map(f => {
+    const nutrients = {};
+    for (const n of f.foodNutrients || []) {
+      for (const key in USDA_NUTRIENT_IDS) {
+        if (n.nutrientId === USDA_NUTRIENT_IDS[key]) nutrients[key] = n.value;
+      }
+    }
+    return {
+      name: f.description,
+      kcal100: nutrients.kcal ?? 0,
+      protein100: nutrients.protein ?? 0,
+      carb100: nutrients.carb ?? 0,
+      fat100: nutrients.fat ?? 0
+    };
+  }).filter(f => f.kcal100 > 0 || f.protein100 > 0);
+}
+
 // ---------- Rendering ----------
 const $ = sel => document.querySelector(sel);
 const $$ = sel => document.querySelectorAll(sel);
@@ -317,6 +345,60 @@ async function handleSaveRecipe(e) {
   await refreshAll();
 }
 
+// ---------- Search modal ----------
+let searchTargetInput = null;
+
+function openSearchModal(targetId) {
+  searchTargetInput = $('#' + targetId);
+  $('#searchInput').value = searchTargetInput.value || '';
+  $('#searchResults').innerHTML = '';
+  $('#searchStatus').textContent = '';
+  $('#searchModal').hidden = false;
+  $('#searchInput').focus();
+}
+function closeSearchModal() {
+  $('#searchModal').hidden = true;
+}
+
+async function handleSearchSubmit(e) {
+  e.preventDefault();
+  const query = $('#searchInput').value.trim();
+  if (!query) return;
+  $('#searchStatus').textContent = 'Searching…';
+  $('#searchResults').innerHTML = '';
+  try {
+    const results = await searchUSDA(query);
+    if (results.length === 0) {
+      $('#searchStatus').textContent = `No matches for "${query}". You can close this and enter it manually.`;
+      return;
+    }
+    $('#searchStatus').textContent = `${results.length} result${results.length === 1 ? '' : 's'} · values per 100g`;
+    $('#searchResults').innerHTML = results.map((r, i) => `
+      <div class="search-result">
+        <div>
+          <div class="name">${escapeHtml(r.name)}</div>
+          <div class="macros-inline">${round1(r.kcal100)} kcal · P${round1(r.protein100)} C${round1(r.carb100)} F${round1(r.fat100)}</div>
+        </div>
+        <button type="button" data-pick="${i}">Use</button>
+      </div>`).join('');
+    $('#searchResults').querySelectorAll('[data-pick]').forEach(btn => {
+      btn.onclick = async () => {
+        const r = results[Number(btn.dataset.pick)];
+        let food = await findFoodByName(r.name);
+        if (!food) {
+          const id = await add('foods', { name: r.name, kcal100: r.kcal100, protein100: r.protein100, carb100: r.carb100, fat100: r.fat100, source: 'usda' });
+          food = { id, ...r };
+        }
+        await renderFoodDatalist();
+        if (searchTargetInput) searchTargetInput.value = food.name;
+        closeSearchModal();
+      };
+    });
+  } catch (err) {
+    $('#searchStatus').textContent = 'Search failed — check your connection and try again.';
+  }
+}
+
 // ---------- Date navigation ----------
 function shiftDate(days) {
   const d = new Date(currentDate);
@@ -350,6 +432,10 @@ async function init() {
   $('#prevDay').addEventListener('click', () => shiftDate(-1));
   $('#nextDay').addEventListener('click', () => shiftDate(1));
   $('#todayBtn').addEventListener('click', () => { currentDate = todayStr(); renderLog(); });
+  $('#searchFoodBtn').addEventListener('click', () => openSearchModal('logName'));
+  $('#searchIngBtn').addEventListener('click', () => openSearchModal('ingName'));
+  $('#closeSearchModal').addEventListener('click', closeSearchModal);
+  $('#searchForm').addEventListener('submit', handleSearchSubmit);
 
   renderRecipeBuilder();
 

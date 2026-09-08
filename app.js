@@ -1,6 +1,6 @@
 // ---------- IndexedDB setup ----------
 const DB_NAME = 'food-tracker';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 let db;
 
 function openDB() {
@@ -17,6 +17,14 @@ function openDB() {
       }
       if (!d.objectStoreNames.contains('logs')) {
         const s = d.createObjectStore('logs', { keyPath: 'id', autoIncrement: true });
+        s.createIndex('date', 'date', { unique: false });
+      }
+      if (!d.objectStoreNames.contains('exercises')) {
+        const s = d.createObjectStore('exercises', { keyPath: 'id', autoIncrement: true });
+        s.createIndex('name', 'name', { unique: false });
+      }
+      if (!d.objectStoreNames.contains('workouts')) {
+        const s = d.createObjectStore('workouts', { keyPath: 'id', autoIncrement: true });
         s.createIndex('date', 'date', { unique: false });
       }
     };
@@ -55,6 +63,27 @@ async function seedFoodsIfEmpty() {
     }
   } catch (err) {
     console.warn('Food dataset sync skipped (offline or unreachable):', err);
+  }
+}
+
+// Same pattern as seedFoodsIfEmpty, for Buhat's exercise->muscle-group dictionary. Seeded
+// from Nippard's own LIFT HISTORY.md and CURRENT BLOCK.md (2026-09-08) — this is the
+// small, stable, repeated set Edwin actually trains, not a generic exercise database.
+async function seedExercisesIfEmpty() {
+  try {
+    const existing = await getAll('exercises');
+    const existingByName = new Map(existing.map(e => [e.name.toLowerCase(), e]));
+    const res = await fetch('./workouts.json');
+    if (!res.ok) throw new Error(`workouts.json fetch failed (${res.status})`);
+    const dataset = await res.json();
+    for (const e of dataset) {
+      const match = existingByName.get(e.name.toLowerCase());
+      const row = { name: e.name, muscle: e.muscle, split: e.split, source: 'dataset' };
+      if (match) { row.id = match.id; await put('exercises', row); }
+      else { await add('exercises', row); }
+    }
+  } catch (err) {
+    console.warn('Exercise dataset sync skipped (offline or unreachable):', err);
   }
 }
 
@@ -129,6 +158,157 @@ async function searchUSDA(query) {
   }).filter(f => f.kcal100 > 0 || f.protein100 > 0);
 }
 
+// ---------- wger.de exercise search (Buhat's muscle-group fallback) ----------
+// Free, no key required. Used only when an exercise isn't already in the bundled/local
+// dictionary. Best-effort — wger's category field varies by API version, so this takes
+// whatever plain-string category comes back and gives up cleanly (caller falls back to
+// asking Edwin) rather than guessing at a numeric category id.
+async function searchWger(name) {
+  const url = `https://wger.de/api/v2/exercise/search/?term=${encodeURIComponent(name)}&language=english&format=json`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`wger search failed (${res.status})`);
+  const data = await res.json();
+  const first = (data.suggestions || [])[0];
+  if (!first) return null;
+  const cat = first.data && first.data.category;
+  return { name: first.value || name, muscle: typeof cat === 'string' ? cat : null };
+}
+
+// ---------- Supabase sync (Nippard/Sevro visibility) ----------
+// Best-effort, write-through, on-demand only — no offline queue. A log made while offline or
+// signed out stays local-only forever (this app doesn't retroactively sync past entries when
+// connectivity returns). That's a known limitation, not an oversight — see HANDOFF.md.
+//
+// config.js supplies SUPABASE_URL/SUPABASE_ANON_KEY. The anon key is meant to be public;
+// Row Level Security (supabase/schema.sql) is what actually protects the data, so a signed-in
+// session is required for every read/write this app makes — see supabase/schema.sql.
+function supabaseConfigured() {
+  return typeof SUPABASE_URL === 'string' && SUPABASE_URL && typeof SUPABASE_ANON_KEY === 'string' && SUPABASE_ANON_KEY;
+}
+function loadSbSession() {
+  try { return JSON.parse(localStorage.getItem('sb_session') || 'null'); }
+  catch { return null; }
+}
+function saveSbSession(session) {
+  try { localStorage.setItem('sb_session', JSON.stringify(session)); } catch {}
+}
+function clearSbSession() {
+  try { localStorage.removeItem('sb_session'); } catch {}
+}
+
+async function supabaseSignIn(email, password) {
+  if (!supabaseConfigured()) throw new Error('Supabase isn\'t configured yet — fill in config.js first.');
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY },
+    body: JSON.stringify({ email, password })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error_description || data.msg || 'Sign in failed.');
+  saveSbSession({ access_token: data.access_token, refresh_token: data.refresh_token, email });
+  return data;
+}
+
+async function supabaseRefresh() {
+  const session = loadSbSession();
+  if (!session || !session.refresh_token) throw new Error('No refresh token.');
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY },
+    body: JSON.stringify({ refresh_token: session.refresh_token })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error_description || data.msg || 'Refresh failed.');
+  const updated = { access_token: data.access_token, refresh_token: data.refresh_token, email: session.email };
+  saveSbSession(updated);
+  return updated;
+}
+
+async function supabaseRequest(path, options = {}) {
+  if (!supabaseConfigured()) return null;
+  const session = loadSbSession();
+  if (!session) return null;
+  const doFetch = token => fetch(`${SUPABASE_URL}${path}`, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, ...(options.headers || {}) }
+  });
+  let res = await doFetch(session.access_token);
+  if (res.status === 401) {
+    try {
+      const refreshed = await supabaseRefresh();
+      res = await doFetch(refreshed.access_token);
+    } catch {
+      clearSbSession();
+      renderSyncStatus();
+      return null;
+    }
+  }
+  return res;
+}
+
+// Returns the new row's Supabase id, or null if the write didn't happen (offline, signed
+// out, not configured, or a genuine failure) — callers must treat null as "stayed local-only."
+async function syncInsert(table, row) {
+  try {
+    const res = await supabaseRequest(`/rest/v1/${table}`, {
+      method: 'POST',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify(row)
+    });
+    if (!res || !res.ok) return null;
+    const data = await res.json();
+    return data[0] ? data[0].id : null;
+  } catch (err) {
+    console.warn(`Supabase sync skipped for ${table}:`, err);
+    return null;
+  }
+}
+async function syncDelete(table, supaId) {
+  if (!supaId) return;
+  try { await supabaseRequest(`/rest/v1/${table}?id=eq.${encodeURIComponent(supaId)}`, { method: 'DELETE' }); }
+  catch (err) { console.warn(`Supabase delete skipped for ${table}:`, err); }
+}
+
+function renderSyncStatus() {
+  const status = $('#syncStatus');
+  const signedOutBox = $('#syncSignedOut');
+  const signOutBtn = $('#syncSignOutBtn');
+  if (!status) return;
+  if (!supabaseConfigured()) {
+    status.textContent = 'Not configured — fill in config.js (see HANDOFF.md) to enable sync.';
+    signedOutBox.style.display = 'none';
+    signOutBtn.style.display = 'none';
+    return;
+  }
+  const session = loadSbSession();
+  if (session) {
+    status.textContent = `✓ Signed in as ${session.email} — new logs sync while online.`;
+    signedOutBox.style.display = 'none';
+    signOutBtn.style.display = 'inline-block';
+  } else {
+    status.textContent = 'Signed out — logs stay phone-only until you sign in.';
+    signedOutBox.style.display = 'block';
+    signOutBtn.style.display = 'none';
+  }
+}
+
+async function handleSyncSignIn() {
+  const email = $('#syncEmail').value.trim();
+  const password = $('#syncPassword').value;
+  if (!email || !password) { alert('Enter both email and password.'); return; }
+  try {
+    await supabaseSignIn(email, password);
+    $('#syncPassword').value = '';
+    renderSyncStatus();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+function handleSyncSignOut() {
+  clearSbSession();
+  renderSyncStatus();
+}
+
 // ---------- Rendering ----------
 const $ = sel => document.querySelector(sel);
 const $$ = sel => document.querySelectorAll(sel);
@@ -140,6 +320,16 @@ async function refreshAll() {
   await renderFoodDatalist();
   await renderRecipeDatalist();
   await renderRecipeList();
+  await renderExerciseDatalist();
+  await renderWorkouts();
+}
+
+async function renderExerciseDatalist() {
+  const exercises = await getAll('exercises');
+  exercises.sort((a, b) => a.name.localeCompare(b.name));
+  const dl = $('#exerciseList');
+  dl.innerHTML = exercises.map(e => `<option value="${escapeHtml(e.name)}">`).join('');
+  window._exercisesCache = exercises;
 }
 
 async function renderFoodDatalist() {
@@ -196,7 +386,13 @@ async function renderLog() {
         <div class="macros"><strong>${e.kcal}</strong> kcal · P <strong>${e.protein}</strong>g · C <strong>${e.carb}</strong>g · F <strong>${e.fat}</strong>g</div>
       </div>`).join('');
     box.querySelectorAll('[data-del-log]').forEach(btn => {
-      btn.onclick = async () => { await del('logs', Number(btn.dataset.delLog)); await renderLog(); await renderTotals(); };
+      btn.onclick = async () => {
+        const logId = Number(btn.dataset.delLog);
+        const target = entries.find(e => e.id === logId);
+        await del('logs', logId);
+        if (target && target.supaId) await syncDelete('food_logs', target.supaId);
+        await renderLog(); await renderTotals();
+      };
     });
   }
   await renderTotals(entries);
@@ -247,6 +443,41 @@ function renderTargets(totals) {
   }).join('');
 }
 
+async function renderWorkouts() {
+  const dateEl = $('#workoutDate');
+  if (!dateEl) return; // Buhat panel not in DOM yet on first paint of an old cached index.html
+  const all = await getAll('workouts');
+  const entries = all.filter(w => w.date === currentDate).sort((a, b) => a.time.localeCompare(b.time));
+  const box = $('#workoutBox');
+  dateEl.textContent = formatFullDate(currentDate);
+
+  if (entries.length === 0) {
+    box.innerHTML = '<p class="muted">No exercises logged for this day.</p>';
+  } else {
+    box.innerHTML = entries.map(w => `
+      <div class="card">
+        <div class="row between">
+          <div>
+            <strong>${escapeHtml(w.exercise)}</strong> <span class="badge">${escapeHtml(w.split)}</span>
+            <div class="muted small"><em>${w.time}${w.muscle ? ' · ' + escapeHtml(w.muscle) : ''}</em></div>
+            <div class="small">${w.sets.map(s => `${s.weight}kg × ${s.reps}`).join(', ')}</div>
+            ${w.notes ? `<div class="muted small notes">${escapeHtml(w.notes)}</div>` : ''}
+          </div>
+          <button class="ghost small" data-del-workout="${w.id}">×</button>
+        </div>
+      </div>`).join('');
+    box.querySelectorAll('[data-del-workout]').forEach(btn => {
+      btn.onclick = async () => {
+        const wId = Number(btn.dataset.delWorkout);
+        const target = entries.find(w => w.id === wId);
+        await del('workouts', wId);
+        if (target && target.supaId) await syncDelete('workout_logs', target.supaId);
+        await renderWorkouts();
+      };
+    });
+  }
+}
+
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
@@ -259,6 +490,10 @@ async function findFoodByName(name) {
 async function findRecipeByName(name) {
   const recipes = window._recipesCache || await getAll('recipes');
   return recipes.find(r => r.name.toLowerCase() === name.trim().toLowerCase());
+}
+async function findExerciseByName(name) {
+  const exercises = window._exercisesCache || await getAll('exercises');
+  return exercises.find(e => e.name.toLowerCase() === name.trim().toLowerCase());
 }
 
 // Live "count × g each" preview, shown under the calculator row.
@@ -325,11 +560,20 @@ async function handleLogSubmit(e) {
     nutrition.fat = round1(nutrition.fat * RESTAURANT_BUMP);
   }
 
-  await add('logs', {
+  const entry = {
     date: currentDate, time: nowTimeStr(), name, grams, quantity, notes,
     kcal: nutrition.kcal, protein: nutrition.protein, carb: nutrition.carb, fat: nutrition.fat,
     isRestaurant, itemType, itemId
+  };
+  const id = await add('logs', entry);
+  entry.id = id;
+
+  const supaId = await syncInsert('food_logs', {
+    date: entry.date, time: entry.time, name: entry.name, grams: entry.grams, quantity: entry.quantity,
+    notes: entry.notes, kcal: entry.kcal, protein: entry.protein, carb: entry.carb, fat: entry.fat,
+    is_restaurant: entry.isRestaurant, item_type: entry.itemType, item_id: String(entry.itemId)
   });
+  if (supaId) { entry.supaId = supaId; await put('logs', entry); }
 
   $('#logName').value = ''; $('#logGrams').value = ''; $('#logCount').value = ''; $('#logWeightEach').value = ''; $('#logNotes').value = ''; $('#logRestaurant').checked = false;
   updateQtyPreview();
@@ -391,6 +635,93 @@ async function handleSaveRecipe(e) {
   $('#recipeName').value = '';
   renderRecipeBuilder();
   await refreshAll();
+}
+
+// ---------- Buhat: workout logging ----------
+let workoutSets = [];
+let resolvedMuscle = null; // { muscle, source } for whatever's currently typed in #wExercise
+
+function renderSetsPreview() {
+  const el = $('#setsPreview');
+  el.textContent = workoutSets.length
+    ? workoutSets.map(s => `${s.weight}kg × ${s.reps}`).join(', ')
+    : '';
+}
+function handleAddSet() {
+  const weight = Number($('#wWeight').value);
+  const reps = Number($('#wReps').value);
+  if (!(weight >= 0) || !(reps > 0)) { alert('Enter a weight (0 or more) and reps (more than 0) first.'); return; }
+  workoutSets.push({ weight, reps });
+  $('#wWeight').value = ''; $('#wReps').value = '';
+  renderSetsPreview();
+}
+
+// Auto-tags the typed exercise to a muscle group: local dictionary first (bundled +
+// anything logged before), then wger.de live search, then asks Edwin directly — same
+// fallback shape as Kain's unknown-food flow.
+async function lookupMuscle() {
+  const name = $('#wExercise').value.trim();
+  const tagEl = $('#muscleTag');
+  if (!name) { tagEl.textContent = ''; resolvedMuscle = null; return; }
+
+  const local = await findExerciseByName(name);
+  if (local) {
+    resolvedMuscle = { muscle: local.muscle, source: local.source };
+    tagEl.textContent = `Tagged: ${local.muscle}`;
+    return;
+  }
+
+  tagEl.textContent = 'Looking up…';
+  try {
+    const hit = await searchWger(name);
+    if (hit && hit.muscle) {
+      resolvedMuscle = { muscle: hit.muscle, source: 'wger' };
+      tagEl.textContent = `Tagged (wger.de): ${hit.muscle}`;
+      await add('exercises', { name, muscle: hit.muscle, split: null, source: 'wger' });
+      await renderExerciseDatalist();
+      return;
+    }
+  } catch (err) {
+    console.warn('wger lookup failed:', err);
+  }
+
+  const manual = prompt(`Couldn't auto-tag "${name}". Enter a muscle group (e.g. Chest/Triceps):`);
+  if (manual && manual.trim()) {
+    resolvedMuscle = { muscle: manual.trim(), source: 'custom' };
+    tagEl.textContent = `Tagged: ${manual.trim()}`;
+    await add('exercises', { name, muscle: manual.trim(), split: null, source: 'custom' });
+    await renderExerciseDatalist();
+  } else {
+    resolvedMuscle = { muscle: null, source: null };
+    tagEl.textContent = 'Not tagged — logged without a muscle group.';
+  }
+}
+
+async function handleWorkoutSubmit(e) {
+  e.preventDefault();
+  const split = $('#wSplit').value;
+  const exercise = $('#wExercise').value.trim();
+  const notes = $('#wNotes').value.trim();
+  if (!exercise) { alert('Enter an exercise name.'); return; }
+  if (workoutSets.length === 0) { alert('Add at least one set (weight + reps, then "Add set").'); return; }
+
+  if (!resolvedMuscle) await lookupMuscle();
+  const muscle = resolvedMuscle ? resolvedMuscle.muscle : null;
+
+  const entry = { date: currentDate, time: nowTimeStr(), split, exercise, muscle, sets: workoutSets, notes };
+  const id = await add('workouts', entry);
+  entry.id = id;
+
+  const supaId = await syncInsert('workout_logs', {
+    date: entry.date, time: entry.time, split: entry.split, exercise: entry.exercise,
+    muscle: entry.muscle, sets: entry.sets, notes: entry.notes
+  });
+  if (supaId) { entry.supaId = supaId; await put('workouts', entry); }
+
+  $('#wExercise').value = ''; $('#wNotes').value = ''; $('#muscleTag').textContent = '';
+  workoutSets = []; resolvedMuscle = null;
+  renderSetsPreview();
+  await renderWorkouts();
 }
 
 // ---------- Search modal ----------
@@ -481,6 +812,7 @@ function shiftDate(days) {
   d.setDate(d.getDate() + days);
   currentDate = d.toISOString().slice(0, 10);
   renderLog();
+  renderWorkouts();
 }
 
 // ---------- Tabs ----------
@@ -499,6 +831,7 @@ function initTabs() {
 async function init() {
   await openDB();
   await seedFoodsIfEmpty();
+  await seedExercisesIfEmpty();
   await refreshAll();
   initTabs();
 
@@ -507,7 +840,7 @@ async function init() {
   $('#recipeForm').addEventListener('submit', handleSaveRecipe);
   $('#prevDay').addEventListener('click', () => shiftDate(-1));
   $('#nextDay').addEventListener('click', () => shiftDate(1));
-  $('#todayBtn').addEventListener('click', () => { currentDate = todayStr(); renderLog(); });
+  $('#todayBtn').addEventListener('click', () => { currentDate = todayStr(); renderLog(); renderWorkouts(); });
   $('#logCount').addEventListener('input', updateQtyPreview);
   $('#logWeightEach').addEventListener('input', updateQtyPreview);
   $('#applyQtyBtn').addEventListener('click', handleApplyQty);
@@ -520,6 +853,17 @@ async function init() {
   renderApiKeyStatus();
 
   renderRecipeBuilder();
+
+  $('#workoutForm').addEventListener('submit', handleWorkoutSubmit);
+  $('#addSetBtn').addEventListener('click', handleAddSet);
+  $('#lookupMuscleBtn').addEventListener('click', lookupMuscle);
+  $('#wPrevDay').addEventListener('click', () => shiftDate(-1));
+  $('#wNextDay').addEventListener('click', () => shiftDate(1));
+  $('#wTodayBtn').addEventListener('click', () => { currentDate = todayStr(); renderLog(); renderWorkouts(); });
+
+  $('#syncSignInBtn').addEventListener('click', handleSyncSignIn);
+  $('#syncSignOutBtn').addEventListener('click', handleSyncSignOut);
+  renderSyncStatus();
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});

@@ -1,6 +1,6 @@
-const CACHE = 'food-tracker-v5';
+const CACHE = 'food-tracker-v6';
 const ASSETS = [
-  './', './index.html', './app.js', './foods.json', './manifest.json', './icon.png',
+  './', './index.html', './app.js', './config.js', './foods.json', './workouts.json', './manifest.json', './icon.png',
   './fonts/satoshi-400_normal.woff2', './fonts/satoshi-400_italic.woff2',
   './fonts/satoshi-500_normal.woff2', './fonts/satoshi-700_normal.woff2',
   './fonts/cormorant-normal.woff2', './fonts/cormorant-italic.woff2'

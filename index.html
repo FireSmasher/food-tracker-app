@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Kain</title>
+<title>Saulog OS</title>
 <link rel="manifest" href="./manifest.json">
 <meta name="theme-color" content="#14130f">
 <link rel="apple-touch-icon" href="./icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' https://api.nal.usda.gov; img-src 'self' data:; script-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' https://api.nal.usda.gov https://wger.de https://*.supabase.co; img-src 'self' data:; script-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
 <style>
   @font-face { font-family: 'Satoshi'; src: url('./fonts/satoshi-400_normal.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: swap; }
   @font-face { font-family: 'Satoshi'; src: url('./fonts/satoshi-400_italic.woff2') format('woff2'); font-weight: 400; font-style: italic; font-display: swap; }
@@ -77,7 +77,7 @@
 </head>
 <body>
 
-<header><h1>Kain</h1></header>
+<header><h1>Saulog OS</h1></header>
 
 <div id="panel-log" class="panel active">
   <div class="datenav">
@@ -148,6 +148,52 @@
   <div id="recipesBox"></div>
 </div>
 
+<div id="panel-buhat" class="panel">
+  <div class="datenav">
+    <button id="wPrevDay">‹</button>
+    <div class="row" style="gap:6px;">
+      <strong id="workoutDate"></strong>
+      <button id="wTodayBtn" class="ghost small">today</button>
+    </div>
+    <button id="wNextDay">›</button>
+  </div>
+
+  <form id="workoutForm" class="card">
+    <label class="field">Split</label>
+    <select id="wSplit" style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border); background:#0e1015; color:var(--text); font-size:15px; margin-bottom:8px;">
+      <option>Push</option>
+      <option>Pull</option>
+      <option>Legs</option>
+      <option>Upper</option>
+      <option>Lower</option>
+      <option>Cardio</option>
+    </select>
+
+    <label class="field">Exercise</label>
+    <div class="row" style="margin-bottom:4px;">
+      <input type="text" id="wExercise" list="exerciseList" placeholder="e.g. Barbell bench press" autocomplete="off" style="margin-bottom:0;">
+      <button type="button" class="ghost small" id="lookupMuscleBtn">Tag</button>
+    </div>
+    <datalist id="exerciseList"></datalist>
+    <div id="muscleTag" class="muted small" style="margin-bottom:8px;"></div>
+
+    <label class="field">Sets</label>
+    <div class="row" style="margin-bottom:4px;">
+      <input type="number" id="wWeight" placeholder="weight (kg)" min="0" step="any" style="margin-bottom:0;">
+      <input type="number" id="wReps" placeholder="reps" min="0" step="1" style="margin-bottom:0;">
+      <button type="button" class="ghost small" id="addSetBtn">Add set</button>
+    </div>
+    <div id="setsPreview" class="muted small" style="margin-bottom:8px;"></div>
+
+    <label class="field">Notes (optional)</label>
+    <input type="text" id="wNotes" placeholder="e.g. left shoulder tight" autocomplete="off">
+    <button type="submit" class="primary">Log exercise</button>
+  </form>
+
+  <h2>Today's session</h2>
+  <div id="workoutBox"></div>
+</div>
+
 <div id="panel-settings" class="panel">
   <h2>Settings</h2>
   <div class="card">
@@ -159,6 +205,20 @@
     <div id="apiKeyStatus" class="muted small"></div>
     <button type="button" class="ghost small" id="removeApiKeyBtn" style="margin-top:8px;">Remove saved key</button>
     <p class="muted small" style="margin-top:10px; margin-bottom:0;">Stored only on this device (never uploaded, never in the app's source code). Get a free key at <span style="color:var(--text)">fdc.nal.usda.gov/api-key-signup</span> if you outgrow the shared demo limit (30 searches/hour).</p>
+  </div>
+
+  <h2>Sync (Nippard / Sevro)</h2>
+  <div class="card">
+    <div id="syncStatus" class="muted small" style="margin-bottom:10px;"></div>
+    <div id="syncSignedOut">
+      <label class="field">Email</label>
+      <input type="text" id="syncEmail" autocomplete="off">
+      <label class="field">Password</label>
+      <input type="password" id="syncPassword" autocomplete="off">
+      <button type="button" class="primary" id="syncSignInBtn">Sign in</button>
+    </div>
+    <button type="button" class="ghost small" id="syncSignOutBtn" style="display:none;">Sign out</button>
+    <p class="muted small" style="margin-top:10px; margin-bottom:0;">Signing in lets every food and workout log also write to your private Supabase database, so a Nippard or Sevro session can read it when you ask for analysis. Nothing changes about what's stored on this phone — this only adds a copy going out, and only for entries logged while signed in and online.</p>
   </div>
 </div>
 
@@ -180,9 +240,11 @@
 <nav class="tabs">
   <button class="tab active" data-tab="log">Log</button>
   <button class="tab" data-tab="recipes">Recipes</button>
+  <button class="tab" data-tab="buhat">Buhat</button>
   <button class="tab" data-tab="settings">Settings</button>
 </nav>
 
+<script src="./config.js"></script>
 <script src="./app.js"></script>
 </body>
 </html>

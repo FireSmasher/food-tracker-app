@@ -1,6 +1,6 @@
 {
-  "name": "Kain",
-  "short_name": "Kain",
+  "name": "Saulog OS",
+  "short_name": "Saulog OS",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#14130f",

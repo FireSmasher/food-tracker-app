@@ -1,0 +1,37 @@
+[
+  { "name": "One-Arm Lat Pulldown", "muscle": "Back", "split": "Pull" },
+  { "name": "Lat Pulldown", "muscle": "Back", "split": "Pull" },
+  { "name": "Seated Cable Row", "muscle": "Back", "split": "Pull" },
+  { "name": "DB Romanian Deadlift", "muscle": "Hamstrings/Back", "split": "Pull" },
+  { "name": "Romanian Deadlift", "muscle": "Hamstrings/Back", "split": "Pull" },
+  { "name": "Deadlift", "muscle": "Back/Hamstrings", "split": "Pull" },
+  { "name": "Face Pulls", "muscle": "Rear Delts/Upper Back", "split": "Pull" },
+  { "name": "Cross-Body Hammer Curls", "muscle": "Biceps/Forearms", "split": "Pull" },
+  { "name": "Superman Holds", "muscle": "Lower Back/Core", "split": "Pull" },
+  { "name": "Assisted Pull-up", "muscle": "Back/Biceps", "split": "Pull" },
+  { "name": "Pull-up", "muscle": "Back/Biceps", "split": "Pull" },
+
+  { "name": "Low-Incline DB Press", "muscle": "Chest/Triceps", "split": "Push" },
+  { "name": "Barbell Bench Press", "muscle": "Chest/Triceps", "split": "Push" },
+  { "name": "DB Bench Press", "muscle": "Chest/Triceps", "split": "Push" },
+  { "name": "Single-Arm Cable Lateral Raise", "muscle": "Side Delts", "split": "Push" },
+  { "name": "Lateral Raise", "muscle": "Side Delts", "split": "Push" },
+  { "name": "Seated DB Overhead Press", "muscle": "Shoulders/Triceps", "split": "Push" },
+  { "name": "DB Shoulder Press", "muscle": "Shoulders/Triceps", "split": "Push" },
+  { "name": "Cable Fly", "muscle": "Chest", "split": "Push" },
+  { "name": "Overhead Cable Tricep Extension", "muscle": "Triceps", "split": "Push" },
+  { "name": "Tricep Extension", "muscle": "Triceps", "split": "Push" },
+
+  { "name": "Heels-Elevated Goblet Squat", "muscle": "Quads", "split": "Legs" },
+  { "name": "Goblet Squat", "muscle": "Quads", "split": "Legs" },
+  { "name": "Barbell Squat", "muscle": "Quads/Glutes", "split": "Legs" },
+  { "name": "Leg Press", "muscle": "Quads/Glutes", "split": "Legs" },
+  { "name": "Leg Extension", "muscle": "Quads", "split": "Legs" },
+  { "name": "Seated Leg Curl", "muscle": "Hamstrings", "split": "Legs" },
+  { "name": "Leg Curl", "muscle": "Hamstrings", "split": "Legs" },
+  { "name": "Walking Lunges", "muscle": "Quads/Glutes", "split": "Legs" },
+  { "name": "Standing Calf Raise", "muscle": "Calves", "split": "Legs" },
+  { "name": "Smith Machine Squat", "muscle": "Quads/Glutes", "split": "Legs" },
+
+  { "name": "Yoga Cooldown", "muscle": "Full Body/Mobility", "split": "Cardio" }
+]

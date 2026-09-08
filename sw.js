@@ -1,4 +1,4 @@
-const CACHE = 'food-tracker-v1';
+const CACHE = 'food-tracker-v2';
 const ASSETS = ['./', './index.html', './app.js', './foods.json', './manifest.json', './icon.png'];
 
 self.addEventListener('install', e => {
@@ -13,12 +13,13 @@ self.addEventListener('activate', e => {
   self.clients.claim();
 });
 
+// Network-first: always try to fetch the latest version, fall back to cache when offline.
 self.addEventListener('fetch', e => {
   e.respondWith(
-    caches.match(e.request).then(cached => cached || fetch(e.request).then(res => {
+    fetch(e.request).then(res => {
       const clone = res.clone();
       caches.open(CACHE).then(c => c.put(e.request, clone));
       return res;
-    }).catch(() => cached))
+    }).catch(() => caches.match(e.request))
   );
 });

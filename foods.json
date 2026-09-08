@@ -115,5 +115,8 @@
 {"name":"Sauerkraut","kcal":19,"protein":0.9,"carb":4.3,"fat":0.1},
 {"name":"Rotkohl (red cabbage, cooked)","kcal":47,"protein":1,"carb":9,"fat":0.5},
 {"name":"Döner sauce (garlic/herb)","kcal":420,"protein":1.5,"carb":3,"fat":44},
-{"name":"Halloumi, grilled","kcal":321,"protein":22,"carb":2.2,"fat":25}
+{"name":"Halloumi, grilled","kcal":321,"protein":22,"carb":2.2,"fat":25},
+
+{"name":"Jasmine rice, raw (Lidl)","kcal":344,"protein":7.3,"carb":78,"fat":0.6},
+{"name":"Jasmine rice, cooked (Lidl)","kcal":129,"protein":2.7,"carb":29,"fat":0.2}
 ]

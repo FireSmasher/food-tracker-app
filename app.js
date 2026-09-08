@@ -134,7 +134,8 @@ async function renderLog() {
         <div class="row between">
           <div>
             <strong>${escapeHtml(e.name)}</strong> ${e.isRestaurant ? '<span class="badge">restaurant</span>' : ''}
-            <div class="muted small">${e.time} · ${e.grams}g</div>
+            <div class="muted small">${e.time} · ${e.grams}g${e.quantity ? ' · ' + escapeHtml(e.quantity) : ''}</div>
+            ${e.notes ? `<div class="muted small notes">${escapeHtml(e.notes)}</div>` : ''}
           </div>
           <button class="ghost small" data-del-log="${e.id}">×</button>
         </div>
@@ -210,6 +211,8 @@ async function handleLogSubmit(e) {
   e.preventDefault();
   const name = $('#logName').value.trim();
   const grams = Number($('#logGrams').value);
+  const quantity = $('#logQuantity').value.trim();
+  const notes = $('#logNotes').value.trim();
   const isRestaurant = $('#logRestaurant').checked;
   if (!name || !grams || grams <= 0) { alert('Enter a food/recipe name and a weight in grams.'); return; }
 
@@ -244,12 +247,12 @@ async function handleLogSubmit(e) {
   }
 
   await add('logs', {
-    date: currentDate, time: nowTimeStr(), name, grams,
+    date: currentDate, time: nowTimeStr(), name, grams, quantity, notes,
     kcal: nutrition.kcal, protein: nutrition.protein, carb: nutrition.carb, fat: nutrition.fat,
     isRestaurant, itemType, itemId
   });
 
-  $('#logName').value = ''; $('#logGrams').value = ''; $('#logRestaurant').checked = false;
+  $('#logName').value = ''; $('#logGrams').value = ''; $('#logQuantity').value = ''; $('#logNotes').value = ''; $('#logRestaurant').checked = false;
   await refreshAll();
 }
 

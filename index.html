@@ -54,6 +54,7 @@
   .bar-good { background: var(--accent); }
   .bar-under { background: #4a5568; }
   .bar-over { background: var(--danger); }
+  .notes { font-style: italic; }
 </style>
 </head>
 <body>
@@ -80,6 +81,10 @@
     <datalist id="recipeList"></datalist>
     <label class="field">Weight (grams)</label>
     <input type="number" id="logGrams" placeholder="e.g. 150" min="1">
+    <label class="field">Quantity (optional, e.g. "2 eggs", "1 cup")</label>
+    <input type="text" id="logQuantity" placeholder="e.g. 2 eggs" autocomplete="off">
+    <label class="field">Notes (optional)</label>
+    <input type="text" id="logNotes" placeholder="e.g. pre-workout, felt bloated" autocomplete="off">
     <div class="checkbox-row">
       <input type="checkbox" id="logRestaurant">
       <label for="logRestaurant" class="small">Eaten out / restaurant (applies +15% kcal &amp; fat correction)</label>

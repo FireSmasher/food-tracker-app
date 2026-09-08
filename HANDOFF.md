@@ -2,6 +2,30 @@
 
 Status as of 2026-09-08. Read this before touching the next phase of this project.
 
+## ⚠ Continue this exact app — do not create a new one
+
+- **Local source:** `~/food-tracker-app` (this directory).
+- **GitHub repo:** `FireSmasher/food-tracker-app` (public), remote already
+  configured as `origin` in this directory's git config.
+- **Live URL:** https://firesmasher.github.io/food-tracker-app/ — deployed via
+  GitHub Pages from the `main` branch, root path. A push to `main` goes live
+  in ~30-60s.
+- The Buhat tab, the Saulog OS rename, and the Nippard/Sevro sync all belong
+  **in this same repo, this same `index.html`/`app.js`, this same deploy** —
+  add the Buhat tab and rename inside the existing files, the same way the
+  Settings tab and Search modal were added on top of the original two-tab
+  (Log/Recipes) layout. Do not spin up a second repo, a second GitHub Pages
+  site, a second Artifact, or a second local project directory for any part
+  of this. If a future session can't find this directory or repo, it should
+  search for it (`gh repo view FireSmasher/food-tracker-app`, or look for
+  `~/food-tracker-app`) before creating anything new.
+- If the storage architecture changes (see Option A below — republishing as
+  an Artifact with a `db` capability), that Artifact should also be a
+  **redeploy of the existing GitHub Pages HTML** into Artifact form, or a
+  clearly-linked companion, not an unrelated fresh build that abandons the
+  IndexedDB data model, the food dataset, the styling, or the URL history
+  already established here.
+
 ## What exists right now
 
 **Kain** — a free, installable PWA food/calorie tracker, live at

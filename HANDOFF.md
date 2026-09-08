@@ -88,16 +88,21 @@ own migration docs.
    the fix: `scripts/query-logs.py --today` returns `{"food_logs": [],
    "workout_logs": []}` — real connection, real auth, real (empty) result.
 5. ✅ **Done** — one user confirmed in Authentication → Users:
-   `fortsaulog@gmail.com`, created 2026-09-08, provider `Email`. "Last sign
-   in at" was still blank as of this check — meaning the account exists but
-   nobody has signed into the app with it yet. That's the one remaining
-   real-world step, and it's Edwin's alone (typing a password into the app
-   is exactly the kind of action Claude never does, permission or not):
-   open the app (phone or https://firesmasher.github.io/food-tracker-app/),
-   Settings → Sync, sign in with that email/password. Once done, log
-   anything in Kain or Buhat and `scripts/query-logs.py --today` should
-   show it — that's the true end-to-end check, and only Edwin can trigger
-   the first half of it.
+   `fortsaulog@gmail.com`, created 2026-09-08, provider `Email`.
+
+## ✅ End-to-end verified, 2026-09-08
+
+Edwin signed into the app himself (Settings → Sync — Claude never saw the
+password) and logged one real food entry and one real workout set on his
+phone. Re-checked "Last sign in at" in Supabase first (now populated,
+confirming the sign-in landed), then ran `scripts/query-logs.py --today`
+and got back real rows in both `food_logs` and `workout_logs`, correctly
+scoped to his `user_id` — not just empty-table connectivity like the
+earlier checks, actual data that round-tripped from the phone through
+Supabase and back out the Nippard/Sevro read path. The full pipeline
+(Kain/Buhat → Supabase → query-logs.py) is live and working. Nothing left
+outstanding from the original four-piece ask except the known limitations
+already listed below (no offline queue, `TARGETS` still one-way).
 
 **No duplication risk** — re-verified 2026-09-08: `git remote -v` in
 `~/food-tracker-app` still points at `FireSmasher/food-tracker-app`, no

@@ -227,9 +227,10 @@ diagnostic, result not yet reported back.
 - **No offline sync queue.** A log made while offline or signed out stays
   local-only until it syncs on its own — there's no outbox/retry mechanism
   that catches up later in the same session. Scope call, not an oversight.
-- **push-targets.py is unverified against a live push** — needs Edwin to add
-  `user_id` to his local service config first, then an actual test run. He
-  said he'd add it this round too — same caveat as the schema migration.
+- ~~push-targets.py is unverified against a live push~~ **DONE 2026-09-09.**
+  `user_id` added to `~/.saulog-os-service.json`, and a real push of
+  2300/150/70/265 returned the written row. The Nippard -> Kain targets
+  direction is now proven end to end, not just written.
 - **Kain's food dataset has real, known gaps** — specifically more Lidl
   products, especially meat-section items Edwin hasn't specified yet.
 - **iOS home-screen storage is fragile** — see incident above. Nothing has

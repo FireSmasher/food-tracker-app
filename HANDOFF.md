@@ -218,8 +218,27 @@ diagnostic, result not yet reported back.
   `query-logs.py` (`quarters_logs`, `weight_logs`, `health_logs`,
   `strava_activities` all return `[]` rather than 404). Two bugs surfaced
   and were fixed in the process, see Round 9 below.
-- **Apple Health Shortcut not built yet** — walkthrough at
-  `docs/apple-health-shortcut.md`, phone-side setup only Edwin can do.
+- **Apple Health Shortcut half-built, paused 2026-09-09 evening.** Walkthrough
+  at `docs/apple-health-shortcut.md`. It is genuinely close — do NOT restart it
+  from scratch. What's already correct in the Shortcut on his phone:
+  - Both `Get Contents of URL` actions, with the right URLs (auth token
+    endpoint, and `health_logs?on_conflict=user_id,date`)
+  - Both set to POST; all four headers on the write action (`apikey`,
+    `Authorization: Bearer` + the Dictionary Value variable, `Content-Type`,
+    `Prefer`); `apikey` + `Content-Type` on the auth action
+  - Auth JSON body with his `email` and `password`
+  - `Get Dictionary Value` for `access_token`, correctly wired
+  - A `steps` field exists in the write body, as a Number
+
+  Three things left, ~6 taps: (1) `Find Health Samples` (Type is Steps, Start
+  Date is today) and `Calculate Statistics` (Sum) got deleted at some point
+  and need re-adding **at the top**, before the auth action; (2) the `steps`
+  body field needs its value pointed at that Sum's output variable; (3) the
+  `Prefer` header value has a typo, reads `resolution=marge-duplicates`, must
+  be `merge`.
+
+  He does NOT need to send a `date` — `health_logs.date` now defaults to
+  today in Europe/Berlin, verified by a live test insert.
 - **Strava is a dead end, don't re-propose it.** 2026-09-09: Edwin went to
   register the API app and found Strava now requires a paid subscription for
   API access. He isn't subscribing, and said he relies on Apple Health and
@@ -435,3 +454,24 @@ gate). `~/.saulog-os-service.json` (local, untracked, Edwin-created-only) holds
       Strava activity" forever on a screen he uses daily. Backend left
       dormant. He noted he relies on Apple Health/Fitness anyway, so that's
       where any further integration effort should go.
+    - **health_logs expanded to six fields** on his pick: `steps`,
+      `sleep_hours`, `active_energy_kcal`, `exercise_minutes`, `workout_type`,
+      `resting_hr`. Added as `alter table ... add column if not exists` since
+      the table already existed live.
+    - **`health_logs.date` now defaults to `(now() at time zone
+      'Europe/Berlin')::date`**, so the Shortcut doesn't have to compute and
+      send a date. This deleted two fiddly phone-side actions (Format Date
+      plus a custom format string that had already been typed wrong as
+      `yyy-MM-dd`). Verified with a live insert-then-delete: a row posted
+      with no date came back dated 2026-09-09.
+    - **`schema.sql` was run three times total this session** and is now
+      genuinely idempotent. It's the fastest loop we found: `cat
+      supabase/schema.sql | pbcopy` on the Mac, then Cmd+A / Cmd+V / Run in
+      the SQL editor. Use that rather than telling him to open the file.
+    - **iPhone Mirroring is not an option, don't propose it.** Tried it this
+      session to drive his phone from the Mac: macOS has the app, and
+      `screencapture` + `osascript`/System Events both work on his machine
+      (UI scripting permission is granted, so a future session genuinely can
+      see and click the Mac screen). But iPhone Mirroring itself refuses with
+      "not available in your country or region" — Apple doesn't ship it in
+      the EU. There is no path from this Mac to that phone's screen.

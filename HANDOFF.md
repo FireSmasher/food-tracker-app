@@ -220,10 +220,13 @@ diagnostic, result not yet reported back.
   and were fixed in the process, see Round 9 below.
 - **Apple Health Shortcut not built yet** — walkthrough at
   `docs/apple-health-shortcut.md`, phone-side setup only Edwin can do.
-- **Strava not connected yet** — walkthrough at `docs/strava-setup.md`,
-  needs Edwin to register a Strava API app and do a one-time OAuth step.
-  Until he does, the new in-app Strava card (see Round 8 below) will
-  correctly show "No Strava activity" every day — that's not a bug.
+- **Strava is a dead end, don't re-propose it.** 2026-09-09: Edwin went to
+  register the API app and found Strava now requires a paid subscription for
+  API access. He isn't subscribing, and said he relies on Apple Health and
+  Fitness anyway. The in-app Strava card was removed the same day;
+  `scripts/sync_strava.py`, the `strava_activities` table (already created in
+  the live DB, empty) and `docs/strava-setup.md` are dormant, not deleted, in
+  case that ever changes. Nothing reads or writes them.
 - **No offline sync queue.** A log made while offline or signed out stays
   local-only until it syncs on its own — there's no outbox/retry mechanism
   that catches up later in the same session. Scope call, not an oversight.
@@ -418,3 +421,17 @@ gate). `~/.saulog-os-service.json` (local, untracked, Edwin-created-only) holds
    - Still outstanding after this round: `user_id` in
      `~/.saulog-os-service.json` (blocks `push-targets.py` and
      `sync_strava.py`), the Apple Health Shortcut, and Strava OAuth.
+10. **Round 10 (2026-09-09) — user_id added, targets verified live, Strava
+    killed.**
+    - `user_id` written into `~/.saulog-os-service.json` (Edwin sent the UID
+      directly; a UID is an identifier, not a credential, and grants nothing
+      without the service_role_key, which stays unread as always).
+    - **`push-targets.py` verified against a live push for the first time**,
+      pushing 2300/150/70/265 and getting the written row back. That script
+      had been shipped-but-unproven since it was written.
+    - **Strava dropped.** Edwin found API access is now subscriber-only. The
+      in-app card was removed (`renderHealthStrava` -> `renderHealth`, Strava
+      markup deleted from `index.html`) rather than left to display "No
+      Strava activity" forever on a screen he uses daily. Backend left
+      dormant. He noted he relies on Apple Health/Fitness anyway, so that's
+      where any further integration effort should go.

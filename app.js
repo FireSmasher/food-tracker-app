@@ -473,7 +473,7 @@ async function handleSyncSignIn() {
     $('#syncPassword').value = '';
     renderSyncStatus();
     await syncTargets();
-    await renderHealthStrava();
+    await renderHealth();
   } catch (err) {
     alert(err.message);
   }
@@ -481,7 +481,7 @@ async function handleSyncSignIn() {
 function handleSyncSignOut() {
   clearSbSession();
   renderSyncStatus();
-  renderHealthStrava();
+  renderHealth();
 }
 
 // ---------- Rendering ----------
@@ -498,7 +498,7 @@ async function refreshAll() {
   await renderExerciseDatalist();
   await renderWorkouts();
   await renderWeight();
-  await renderHealthStrava();
+  await renderHealth();
   await renderQuarters();
 }
 
@@ -705,21 +705,24 @@ async function handleWeightSubmit(e) {
   await renderWeight();
 }
 
-// ---------- Health/Strava (read-only, synced-in-only) ----------
-// Both tables are written entirely from outside this app -- health_logs by the Apple Health
-// Shortcut (docs/apple-health-shortcut.md), strava_activities by scripts/sync_strava.py -- so
-// there's no local IndexedDB store for either; the app only ever reads them from Supabase, and
-// only when signed in (that's the only way this data can exist for the current user at all).
-async function renderHealthStrava() {
-  const section = $('#healthStravaSection');
+// ---------- Apple Health (read-only, synced-in-only) ----------
+// health_logs is written entirely from outside this app, by the iOS Shortcut in
+// docs/apple-health-shortcut.md, so there's no local IndexedDB store for it; the app only
+// ever reads it from Supabase, and only when signed in (that's the only way this data can
+// exist for the current user at all).
+//
+// There was a Strava card here too until 2026-09-09, dropped the same day: Strava moved API
+// access behind a paid subscription, so strava_activities can never fill for Edwin and the
+// card would have read "No Strava activity" every day forever. The backend half
+// (scripts/sync_strava.py, the table, docs/strava-setup.md) is left dormant, see HANDOFF.md.
+async function renderHealth() {
+  const section = $('#healthSection');
   if (!section) return;
   if (!supabaseConfigured() || !loadSbSession()) { section.hidden = true; return; }
   section.hidden = false;
 
   const healthBox = $('#healthBox');
-  const stravaBox = $('#stravaBox');
   healthBox.textContent = 'Loading…';
-  stravaBox.textContent = 'Loading…';
 
   try {
     const res = await supabaseRequest(`/rest/v1/health_logs?select=steps,sleep_hours&date=eq.${currentDate}&limit=1`);
@@ -733,25 +736,6 @@ async function renderHealthStrava() {
   } catch (err) {
     console.warn('Health log fetch skipped:', err);
     healthBox.textContent = 'Couldn\'t load (offline?).';
-  }
-
-  try {
-    const res = await supabaseRequest(`/rest/v1/strava_activities?select=name,type,distance_km,moving_time_min,elevation_m,avg_hr&date=eq.${currentDate}&order=created_at.desc`);
-    const rows = res && res.ok ? await res.json() : [];
-    stravaBox.innerHTML = rows.length
-      ? rows.map(a => {
-          const bits = [
-            a.distance_km != null ? `${a.distance_km}km` : null,
-            a.moving_time_min != null ? `${a.moving_time_min}min` : null,
-            a.elevation_m != null ? `${a.elevation_m}m elev` : null,
-            a.avg_hr != null ? `${a.avg_hr}bpm avg` : null
-          ].filter(Boolean).join(' · ');
-          return `<div>${escapeHtml(a.type || 'Activity')}${a.name ? ` — ${escapeHtml(a.name)}` : ''}${bits ? `<br>${bits}` : ''}</div>`;
-        }).join('<hr style="margin:6px 0; opacity:.2;">')
-      : `No Strava activity for ${currentDate.slice(5)}.`;
-  } catch (err) {
-    console.warn('Strava fetch skipped:', err);
-    stravaBox.textContent = 'Couldn\'t load (offline?).';
   }
 }
 
@@ -1528,7 +1512,7 @@ function shiftDate(days) {
   renderLog();
   renderWorkouts();
   renderWeight();
-  renderHealthStrava();
+  renderHealth();
   renderQuarters();
 }
 

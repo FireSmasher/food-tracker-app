@@ -1,4 +1,15 @@
-# Strava setup (one-time, has to be done by Edwin)
+# Strava setup (BLOCKED, kept for reference only)
+
+> **Dead end as of 2026-09-09.** Edwin went to register the API app and found Strava now
+> gates API access behind a paid subscription. He isn't a subscriber and doesn't want to
+> become one, and he relies on Apple Health/Fitness anyway. The in-app Strava card was
+> removed the same day. `scripts/sync_strava.py`, the `strava_activities` table and the
+> steps below are left in place but dormant; nothing reads or writes them.
+>
+> Don't re-propose this in a future session unless Edwin says he's subscribed.
+
+---
+
 
 `scripts/sync_strava.py` pulls your Strava activities into Supabase (`strava_activities`
 table), so a Nippard/Sevro session can see them via `query-logs.py`. Nothing auto-runs it

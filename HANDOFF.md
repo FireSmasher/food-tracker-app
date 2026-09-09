@@ -125,12 +125,19 @@ Name stayed "Saulog OS" — Edwin confirmed, no rename needed.
   `search=`/`name__icontains=` params are silent no-ops that return the whole
   ~3300-row table unfiltered, so exact-name is the only working option against
   their live API today.
-- **Open ask from Edwin, proposed but not yet confirmed or built:** cache
-  wger's full ~3300-entry name+id list locally (a handful of paginated API
-  calls, purely mechanical, no LLM/search cost) and match against that
-  client-side instead of requiring an exact hit against wger's live API — this
-  would make far more typed exercise names auto-tag successfully. Waiting on
-  Edwin to say go.
+- **Built, 2026-09-09: local wger name cache.** `scripts/build_wger_cache.py`
+  pulls wger's full exercise list once (900 base exercises, 3138 unique
+  English name translations/aliases after de-duping) into
+  `wger_exercises.json`, bundled with the app like `foods.json`. `app.js`'s
+  `searchWgerCache()` matches a typed name against it (exact match first,
+  then substring either direction, picking the shortest/most-specific
+  candidate) before ever hitting the live API — the old exact-match-only
+  `searchWger()` live call is now only a last-resort fallback for exercises
+  wger's added since the cache was built. Verified by hand in-browser:
+  "Bulgarian split squat" (not in the bundled 32, and not an exact case
+  match to wger's own naming) now auto-tags to Legs/Hamstrings with no live
+  network call. Re-run the build script occasionally to pick up wger's
+  newly added exercises — it's a static snapshot, not live data.
 
 ### Sync (Nippard/Sevro visibility) and targets
 
@@ -206,23 +213,27 @@ diagnostic, result not yet reported back.
 
 ## Known limitations (current, not historical)
 
-- **`supabase/schema.sql` not yet run against the live project (2026-09-09).**
-  `quarters_logs`, `weight_logs`, `health_logs`, `strava_activities` exist in
-  the schema file but not in the real Supabase project. Quarters/weight
-  logging works fine locally on the phone either way, it just won't sync
-  until this is run. Edwin needs to paste the file into the Supabase SQL
-  editor and run it — see "Setup reference: Supabase project" below.
+- **`supabase/schema.sql` not yet run against the live project (as of this
+  writing, 2026-09-09).** `quarters_logs`, `weight_logs`, `health_logs`,
+  `strava_activities` exist in the schema file but not in the real Supabase
+  project. Quarters/weight logging works fine locally on the phone either
+  way, it just won't sync until this is run. Edwin needs to paste the file
+  into the Supabase SQL editor and run it — see "Setup reference: Supabase
+  project" below. **He said he'd do this right after this round of work; if
+  a future session finds `quarters_logs` still 404ing via `query-logs.py`,
+  it means he didn't get to it, not that it's still an open ask.**
 - **Apple Health Shortcut not built yet** — walkthrough at
   `docs/apple-health-shortcut.md`, phone-side setup only Edwin can do.
 - **Strava not connected yet** — walkthrough at `docs/strava-setup.md`,
   needs Edwin to register a Strava API app and do a one-time OAuth step.
+  Until he does, the new in-app Strava card (see Round 8 below) will
+  correctly show "No Strava activity" every day — that's not a bug.
 - **No offline sync queue.** A log made while offline or signed out stays
   local-only until it syncs on its own — there's no outbox/retry mechanism
   that catches up later in the same session. Scope call, not an oversight.
 - **push-targets.py is unverified against a live push** — needs Edwin to add
-  `user_id` to his local service config first, then an actual test run.
-- **wger fix is exact-name-match only**, not fuzzy — see Buhat section above.
-  Client-side name-cache proposed, not yet built.
+  `user_id` to his local service config first, then an actual test run. He
+  said he'd add it this round too — same caveat as the schema migration.
 - **Kain's food dataset has real, known gaps** — specifically more Lidl
   products, especially meat-section items Edwin hasn't specified yet.
 - **iOS home-screen storage is fragile** — see incident above. Nothing has
@@ -361,3 +372,28 @@ gate). `~/.saulog-os-service.json` (local, untracked, Edwin-created-only) holds
      updated file in the SQL editor before any of these sync for real
      (IndexedDB/local will still work, sync will silently no-op until then,
      same graceful-degradation behavior as any other offline case).
+8. **Round 8 (2026-09-09) — wger local cache, in-app Health/Strava view, a
+   schema grant bug caught before it shipped.**
+   - **wger local cache**, described above under Buhat.
+   - **In-app Health/Strava view.** Buhat now has a "Health & Strava" section
+     below the workout log (`#healthStravaSection` in `index.html`,
+     `renderHealthStrava()` in `app.js`) — read-only, since both tables are
+     written entirely from outside the app (the Health Shortcut, `sync_strava.py`).
+     Hidden entirely when signed out (there's nothing to show — neither
+     source can write without a real session). Shows today's steps/sleep
+     from `health_logs` and the current day's Strava activities from
+     `strava_activities`, both scoped to the same date the Buhat date-nav is
+     on. Wired into `refreshAll()`, `shiftDate()`, sign-in, and sign-out so it
+     stays in sync with the rest of the day-based UI. Verified in a local
+     browser test (signed-out state correctly hides the section, no console
+     errors) — not yet verified signed-in with real data, since the schema
+     migration this depends on hadn't been run yet at the time of this build.
+   - **Caught while building the above: `strava_activities` was missing its
+     `grant` line in `supabase/schema.sql`** — RLS policies existed but no
+     baseline table-level grant, the exact bug this file already warned about
+     for a different table (see "Setup reference: Supabase project" below).
+     Would have hit both `sync_strava.py` (service_role) and the new in-app
+     view (authenticated) with a `42501 permission denied` the moment the
+     schema was run. Fixed before Edwin ran the migration.
+   - Sanity-checked: `node --check app.js` passes, app loads and logs cleanly
+     in a local browser smoke test, `git status` clean going into this round.

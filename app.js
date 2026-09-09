@@ -266,18 +266,53 @@ async function searchUSDA(query) {
   }).filter(f => f.kcal100 > 0 || f.protein100 > 0);
 }
 
-// ---------- wger.de exercise search (Buhat's muscle-group fallback) ----------
-// Free, no key required. Used only when an exercise isn't already in the bundled/local
-// dictionary.
+// ---------- wger.de live exercise search (last-resort fallback) ----------
+// Free, no key required. Only reached now when searchWgerCache() (below) misses -- i.e. the
+// typed name isn't in the local wger_exercises.json snapshot at all, most likely because it's
+// an exercise wger added after the cache was last built (scripts/build_wger_cache.py).
 //
 // wger removed its old free-text suggest endpoint (/api/v2/exercise/search/, used by the
 // original build). It now 404s outright, confirmed by hand 2026-09-08. Its replacement
 // list endpoint (exercise-translation) also has no working substring/fuzzy filter (its
 // `search=` param is a silent no-op that returns the whole ~3300-row table unfiltered,
 // also confirmed by hand), so this can only do an exact, case-sensitive name lookup,
-// tried as typed, then Title Cased, since wger's own names are Title Case. That's real
-// but narrower than "fuzzy search": it hits when the typed name matches wger's naming,
-// same overall fallback shape as before (local dictionary -> wger -> ask Edwin).
+// tried as typed, then Title Cased, since wger's own names are Title Case. Full fallback
+// shape: local dictionary -> local wger cache (exact, then substring) -> live wger exact
+// match -> ask Edwin.
+// ---------- Local wger name cache (scripts/build_wger_cache.py -> wger_exercises.json) ----------
+// A static snapshot of wger's ~3138 unique exercise names + muscle groups, built once offline
+// (see the script for why: only 900 base exercises but ~3365 name variants/aliases across
+// them, and wger's live `search=`/`name__icontains=` params are silent no-ops -- see the
+// comment above searchWger). Checked before the live call so most typed names -- including
+// ones that don't exactly match wger's canonical capitalization -- resolve with no network
+// round trip at all. Lazy-loaded once per session; ~300KB, fine to hold in memory.
+let wgerCachePromise = null;
+function loadWgerCache() {
+  if (!wgerCachePromise) {
+    wgerCachePromise = fetch('./wger_exercises.json')
+      .then(res => { if (!res.ok) throw new Error(`wger_exercises.json fetch failed (${res.status})`); return res.json(); })
+      .catch(err => { console.warn('wger cache load failed:', err); wgerCachePromise = null; return []; });
+  }
+  return wgerCachePromise;
+}
+async function searchWgerCache(name) {
+  const cache = await loadWgerCache();
+  if (!cache.length) return null;
+  const needle = name.trim().toLowerCase();
+  if (!needle) return null;
+  const exact = cache.find(e => e.name.toLowerCase() === needle);
+  if (exact) return exact;
+  // No exact hit: fall back to substring matching either direction, picking the shortest
+  // candidate name (the most specific match, least likely to be a loosely-related exercise).
+  const candidates = cache.filter(e => {
+    const n = e.name.toLowerCase();
+    return n.includes(needle) || needle.includes(n);
+  });
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => a.name.length - b.name.length);
+  return candidates[0];
+}
+
 async function searchWger(name) {
   const variants = [...new Set([name, name.replace(/\w\S*/g, w => w[0].toUpperCase() + w.slice(1).toLowerCase())])];
   for (const variant of variants) {
@@ -438,6 +473,7 @@ async function handleSyncSignIn() {
     $('#syncPassword').value = '';
     renderSyncStatus();
     await syncTargets();
+    await renderHealthStrava();
   } catch (err) {
     alert(err.message);
   }
@@ -445,6 +481,7 @@ async function handleSyncSignIn() {
 function handleSyncSignOut() {
   clearSbSession();
   renderSyncStatus();
+  renderHealthStrava();
 }
 
 // ---------- Rendering ----------
@@ -461,6 +498,7 @@ async function refreshAll() {
   await renderExerciseDatalist();
   await renderWorkouts();
   await renderWeight();
+  await renderHealthStrava();
   await renderQuarters();
 }
 
@@ -665,6 +703,56 @@ async function handleWeightSubmit(e) {
     if (supaId) { entry.supaId = supaId; await put('weights', entry); }
   }
   await renderWeight();
+}
+
+// ---------- Health/Strava (read-only, synced-in-only) ----------
+// Both tables are written entirely from outside this app -- health_logs by the Apple Health
+// Shortcut (docs/apple-health-shortcut.md), strava_activities by scripts/sync_strava.py -- so
+// there's no local IndexedDB store for either; the app only ever reads them from Supabase, and
+// only when signed in (that's the only way this data can exist for the current user at all).
+async function renderHealthStrava() {
+  const section = $('#healthStravaSection');
+  if (!section) return;
+  if (!supabaseConfigured() || !loadSbSession()) { section.hidden = true; return; }
+  section.hidden = false;
+
+  const healthBox = $('#healthBox');
+  const stravaBox = $('#stravaBox');
+  healthBox.textContent = 'Loading…';
+  stravaBox.textContent = 'Loading…';
+
+  try {
+    const res = await supabaseRequest(`/rest/v1/health_logs?select=steps,sleep_hours&date=eq.${currentDate}&limit=1`);
+    const rows = res && res.ok ? await res.json() : [];
+    const row = rows[0];
+    healthBox.textContent = row
+      ? [row.steps != null ? `${row.steps.toLocaleString()} steps` : null,
+         row.sleep_hours != null ? `${row.sleep_hours}h sleep` : null]
+          .filter(Boolean).join(' · ') || 'Row synced, no fields set.'
+      : `No Health data for ${currentDate.slice(5)} yet.`;
+  } catch (err) {
+    console.warn('Health log fetch skipped:', err);
+    healthBox.textContent = 'Couldn\'t load (offline?).';
+  }
+
+  try {
+    const res = await supabaseRequest(`/rest/v1/strava_activities?select=name,type,distance_km,moving_time_min,elevation_m,avg_hr&date=eq.${currentDate}&order=created_at.desc`);
+    const rows = res && res.ok ? await res.json() : [];
+    stravaBox.innerHTML = rows.length
+      ? rows.map(a => {
+          const bits = [
+            a.distance_km != null ? `${a.distance_km}km` : null,
+            a.moving_time_min != null ? `${a.moving_time_min}min` : null,
+            a.elevation_m != null ? `${a.elevation_m}m elev` : null,
+            a.avg_hr != null ? `${a.avg_hr}bpm avg` : null
+          ].filter(Boolean).join(' · ');
+          return `<div>${escapeHtml(a.type || 'Activity')}${a.name ? ` — ${escapeHtml(a.name)}` : ''}${bits ? `<br>${bits}` : ''}</div>`;
+        }).join('<hr style="margin:6px 0; opacity:.2;">')
+      : `No Strava activity for ${currentDate.slice(5)}.`;
+  } catch (err) {
+    console.warn('Strava fetch skipped:', err);
+    stravaBox.textContent = 'Couldn\'t load (offline?).';
+  }
 }
 
 // ---------- Quarters render/save ----------
@@ -1187,6 +1275,21 @@ async function lookupMuscle() {
 
   tagEl.textContent = 'Looking up…';
   try {
+    const cached = await searchWgerCache(name);
+    if (cached && cached.muscle) {
+      resolvedMuscle = { muscle: cached.muscle, source: 'wger' };
+      tagEl.textContent = `Tagged (wger.de): ${cached.muscle}`;
+      await add('exercises', { name, muscle: cached.muscle, split: null, source: 'wger' });
+      await renderExerciseDatalist();
+      return;
+    }
+  } catch (err) {
+    console.warn('wger cache lookup failed:', err);
+  }
+
+  // Cache miss (exercise added to wger after the last cache build, or the fetch itself
+  // failed) -- fall back to the live exact-name API call before giving up to the manual ask.
+  try {
     const hit = await searchWger(name);
     if (hit && hit.muscle) {
       resolvedMuscle = { muscle: hit.muscle, source: 'wger' };
@@ -1196,7 +1299,7 @@ async function lookupMuscle() {
       return;
     }
   } catch (err) {
-    console.warn('wger lookup failed:', err);
+    console.warn('wger live lookup failed:', err);
   }
 
   const manual = prompt(`Couldn't auto-tag "${name}". Enter a muscle group (e.g. Chest/Triceps):`);
@@ -1425,6 +1528,7 @@ function shiftDate(days) {
   renderLog();
   renderWorkouts();
   renderWeight();
+  renderHealthStrava();
   renderQuarters();
 }
 
@@ -1470,6 +1574,7 @@ async function init() {
   await seedFoodsIfEmpty();
   await seedGermanFoodsIfEmpty();
   await seedExercisesIfEmpty();
+  loadWgerCache(); // fire-and-forget: warms the cache so the first Buhat tag doesn't wait on it
   await refreshAll();
   initTabs();
 

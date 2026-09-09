@@ -202,6 +202,11 @@ grant select, insert, update, delete on public.targets to service_role;
 grant select, insert, update, delete on public.quarters_logs to authenticated, service_role;
 grant select, insert, update, delete on public.weight_logs to authenticated, service_role;
 grant select, insert, update, delete on public.health_logs to authenticated, service_role;
+-- strava_activities is written only by scripts/sync_strava.py (service_role) but read by the
+-- app itself (authenticated) for the in-app Strava view, so both roles need it -- same missed-
+-- grant bug flagged above almost shipped here too.
+grant select, insert, update, delete on public.strava_activities to service_role;
+grant select on public.strava_activities to authenticated;
 
 -- Nippard/Sevro read access goes through scripts/query-logs.py using the service_role key,
 -- which bypasses RLS by design (it's a trusted server-side key, never shipped in this repo).

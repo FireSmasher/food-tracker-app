@@ -42,9 +42,16 @@ def load_config():
     return cfg
 
 
+# Only the per-event tables carry a `time` column; weight/health are one row per day and
+# Strava rows come from an external API with no local clock time. Ordering every table by
+# `time` (the original behaviour) 400s with 42703 on the other three.
+TABLES_WITH_TIME = {"food_logs", "workout_logs", "quarters_logs"}
+
+
 def fetch_table(cfg, table, since, until):
     url = f"{cfg['supabase_url'].rstrip('/')}/rest/v1/{table}"
-    params = [f"date=gte.{since}", f"date=lte.{until}", "order=date.asc,time.asc"]
+    secondary = "time.asc" if table in TABLES_WITH_TIME else "created_at.asc"
+    params = [f"date=gte.{since}", f"date=lte.{until}", f"order=date.asc,{secondary}"]
     req = urllib.request.Request(f"{url}?{'&'.join(params)}")
     req.add_header("apikey", cfg["service_role_key"])
     req.add_header("Authorization", f"Bearer {cfg['service_role_key']}")

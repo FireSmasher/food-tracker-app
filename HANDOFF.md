@@ -213,15 +213,11 @@ diagnostic, result not yet reported back.
 
 ## Known limitations (current, not historical)
 
-- **`supabase/schema.sql` not yet run against the live project (as of this
-  writing, 2026-09-09).** `quarters_logs`, `weight_logs`, `health_logs`,
-  `strava_activities` exist in the schema file but not in the real Supabase
-  project. Quarters/weight logging works fine locally on the phone either
-  way, it just won't sync until this is run. Edwin needs to paste the file
-  into the Supabase SQL editor and run it — see "Setup reference: Supabase
-  project" below. **He said he'd do this right after this round of work; if
-  a future session finds `quarters_logs` still 404ing via `query-logs.py`,
-  it means he didn't get to it, not that it's still an open ask.**
+- ~~`supabase/schema.sql` not yet run against the live project~~ **DONE
+  2026-09-09.** Edwin ran it; all seven tables verified reachable via
+  `query-logs.py` (`quarters_logs`, `weight_logs`, `health_logs`,
+  `strava_activities` all return `[]` rather than 404). Two bugs surfaced
+  and were fixed in the process, see Round 9 below.
 - **Apple Health Shortcut not built yet** — walkthrough at
   `docs/apple-health-shortcut.md`, phone-side setup only Edwin can do.
 - **Strava not connected yet** — walkthrough at `docs/strava-setup.md`,
@@ -397,3 +393,27 @@ gate). `~/.saulog-os-service.json` (local, untracked, Edwin-created-only) holds
      schema was run. Fixed before Edwin ran the migration.
    - Sanity-checked: `node --check app.js` passes, app loads and logs cleanly
      in a local browser smoke test, `git status` clean going into this round.
+9. **Round 9 (2026-09-09) — schema actually run, two bugs it exposed.**
+   Edwin ran `supabase/schema.sql` in the SQL editor. It failed twice before
+   succeeding, both times for real reasons worth remembering:
+   - **`create policy` is not idempotent.** Postgres has no
+     `create policy if not exists`, so re-running the file against a project
+     that already had `food_logs`/`workout_logs`/`targets` set up died with
+     `42710: policy "food_logs: owner select" already exists`. Fixed by
+     preceding all 25 policies with `drop policy if exists`. The file is now
+     genuinely safe to re-run; the header says so. Note this makes Supabase's
+     SQL editor show a "Potential issue detected: destructive operations"
+     warning — that's triggered by the word `drop` alone, and the file
+     contains no `drop table`/`delete`/`truncate`/`drop column` at all
+     (verified by grep). A dropped policy is re-created on the very next line,
+     and a table with RLS on and no policy fails *closed*, never open.
+   - **`query-logs.py` hardcoded `order=date.asc,time.asc` for every table.**
+     Only `food_logs`/`workout_logs`/`quarters_logs` have a `time` column, so
+     the three new tables 400'd with `42703: column ... does not exist` the
+     moment they became reachable. This is why the script "worked" before:
+     the tables didn't exist, so a 404 masked the ordering bug behind it.
+     Fixed with a `TABLES_WITH_TIME` set, falling back to `created_at.asc`.
+     All six log tables verified reading cleanly afterwards.
+   - Still outstanding after this round: `user_id` in
+     `~/.saulog-os-service.json` (blocks `push-targets.py` and
+     `sync_strava.py`), the Apple Health Shortcut, and Strava OAuth.

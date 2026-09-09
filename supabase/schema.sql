@@ -1,7 +1,12 @@
 -- Saulog OS (Kain + Buhat) shared database schema.
 --
--- Run this once in the Supabase SQL editor for a fresh project (Project -> SQL Editor ->
--- New query -> paste -> Run). See HANDOFF.md "Setup: Supabase" for the surrounding steps.
+-- Run this in the Supabase SQL editor (Project -> SQL Editor -> New query -> paste -> Run).
+-- See HANDOFF.md "Setup: Supabase" for the surrounding steps.
+--
+-- Safe to re-run against a project that's already partly set up: tables and indexes are
+-- `if not exists`, and every policy is preceded by a `drop policy if exists` because Postgres
+-- has no `create policy if not exists` (a plain re-run died with 42710 "policy already
+-- exists" on 2026-09-09 when the newer tables were added to an existing project).
 --
 -- Security model: this app is a public GitHub repo, so the anon key embedded in config.js is
 -- readable by anyone. That is fine BY DESIGN as long as these Row Level Security policies are
@@ -131,62 +136,87 @@ alter table public.health_logs enable row level security;
 alter table public.strava_activities enable row level security;
 
 -- Each user (in practice: just Edwin) can only ever see or touch their own rows.
+drop policy if exists "food_logs: owner select" on public.food_logs;
 create policy "food_logs: owner select" on public.food_logs
   for select using (auth.uid() = user_id);
+drop policy if exists "food_logs: owner insert" on public.food_logs;
 create policy "food_logs: owner insert" on public.food_logs
   for insert with check (auth.uid() = user_id);
+drop policy if exists "food_logs: owner update" on public.food_logs;
 create policy "food_logs: owner update" on public.food_logs
   for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "food_logs: owner delete" on public.food_logs;
 create policy "food_logs: owner delete" on public.food_logs
   for delete using (auth.uid() = user_id);
 
+drop policy if exists "workout_logs: owner select" on public.workout_logs;
 create policy "workout_logs: owner select" on public.workout_logs
   for select using (auth.uid() = user_id);
+drop policy if exists "workout_logs: owner insert" on public.workout_logs;
 create policy "workout_logs: owner insert" on public.workout_logs
   for insert with check (auth.uid() = user_id);
+drop policy if exists "workout_logs: owner update" on public.workout_logs;
 create policy "workout_logs: owner update" on public.workout_logs
   for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "workout_logs: owner delete" on public.workout_logs;
 create policy "workout_logs: owner delete" on public.workout_logs
   for delete using (auth.uid() = user_id);
 
 -- Read-only for the signed-in owner; no insert/update/delete policy exists for
 -- `authenticated` on purpose (see comment on the table above).
+drop policy if exists "targets: owner select" on public.targets;
 create policy "targets: owner select" on public.targets
   for select using (auth.uid() = user_id);
 
+drop policy if exists "quarters_logs: owner select" on public.quarters_logs;
 create policy "quarters_logs: owner select" on public.quarters_logs
   for select using (auth.uid() = user_id);
+drop policy if exists "quarters_logs: owner insert" on public.quarters_logs;
 create policy "quarters_logs: owner insert" on public.quarters_logs
   for insert with check (auth.uid() = user_id);
+drop policy if exists "quarters_logs: owner update" on public.quarters_logs;
 create policy "quarters_logs: owner update" on public.quarters_logs
   for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "quarters_logs: owner delete" on public.quarters_logs;
 create policy "quarters_logs: owner delete" on public.quarters_logs
   for delete using (auth.uid() = user_id);
 
+drop policy if exists "weight_logs: owner select" on public.weight_logs;
 create policy "weight_logs: owner select" on public.weight_logs
   for select using (auth.uid() = user_id);
+drop policy if exists "weight_logs: owner insert" on public.weight_logs;
 create policy "weight_logs: owner insert" on public.weight_logs
   for insert with check (auth.uid() = user_id);
+drop policy if exists "weight_logs: owner update" on public.weight_logs;
 create policy "weight_logs: owner update" on public.weight_logs
   for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "weight_logs: owner delete" on public.weight_logs;
 create policy "weight_logs: owner delete" on public.weight_logs
   for delete using (auth.uid() = user_id);
 
+drop policy if exists "health_logs: owner select" on public.health_logs;
 create policy "health_logs: owner select" on public.health_logs
   for select using (auth.uid() = user_id);
+drop policy if exists "health_logs: owner insert" on public.health_logs;
 create policy "health_logs: owner insert" on public.health_logs
   for insert with check (auth.uid() = user_id);
+drop policy if exists "health_logs: owner update" on public.health_logs;
 create policy "health_logs: owner update" on public.health_logs
   for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "health_logs: owner delete" on public.health_logs;
 create policy "health_logs: owner delete" on public.health_logs
   for delete using (auth.uid() = user_id);
 
+drop policy if exists "strava_activities: owner select" on public.strava_activities;
 create policy "strava_activities: owner select" on public.strava_activities
   for select using (auth.uid() = user_id);
+drop policy if exists "strava_activities: owner insert" on public.strava_activities;
 create policy "strava_activities: owner insert" on public.strava_activities
   for insert with check (auth.uid() = user_id);
+drop policy if exists "strava_activities: owner update" on public.strava_activities;
 create policy "strava_activities: owner update" on public.strava_activities
   for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "strava_activities: owner delete" on public.strava_activities;
 create policy "strava_activities: owner delete" on public.strava_activities
   for delete using (auth.uid() = user_id);
 

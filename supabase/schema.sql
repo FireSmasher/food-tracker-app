@@ -115,6 +115,14 @@ alter table public.health_logs add column if not exists exercise_minutes numeric
 alter table public.health_logs add column if not exists workout_type text;
 alter table public.health_logs add column if not exists resting_hr numeric;
 
+-- Default the date to "today in Berlin" so the iOS Shortcut doesn't have to compute and
+-- send one. Added 2026-09-09 to delete two fiddly actions (Format Date + a custom
+-- yyyy-MM-dd format string) from the phone-side build, which is the expensive place to
+-- get something wrong. Explicitly Europe/Berlin, not plain `current_date`: the server
+-- clock is UTC, so a shortcut run after midnight Berlin time would otherwise file the
+-- row under the previous day. Sending an explicit `date` still overrides this.
+alter table public.health_logs alter column date set default (now() at time zone 'Europe/Berlin')::date;
+
 create index if not exists food_logs_user_date_idx on public.food_logs (user_id, date);
 create index if not exists workout_logs_user_date_idx on public.workout_logs (user_id, date);
 create index if not exists quarters_logs_user_date_idx on public.quarters_logs (user_id, date);

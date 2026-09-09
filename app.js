@@ -1,6 +1,6 @@
 // ---------- IndexedDB setup ----------
 const DB_NAME = 'food-tracker';
-const DB_VERSION = 2;
+const DB_VERSION = 5;
 let db;
 
 function openDB() {
@@ -11,6 +11,11 @@ function openDB() {
       if (!d.objectStoreNames.contains('foods')) {
         const s = d.createObjectStore('foods', { keyPath: 'id', autoIncrement: true });
         s.createIndex('name', 'name', { unique: false });
+        s.createIndex('barcode', 'barcode', { unique: false });
+      } else if (e.oldVersion < 3) {
+        // v2 -> v3: added barcode scanning, existing installs need the index added in place.
+        const s = e.target.transaction.objectStore('foods');
+        if (!s.indexNames.contains('barcode')) s.createIndex('barcode', 'barcode', { unique: false });
       }
       if (!d.objectStoreNames.contains('recipes')) {
         d.createObjectStore('recipes', { keyPath: 'id', autoIncrement: true });
@@ -26,6 +31,15 @@ function openDB() {
       if (!d.objectStoreNames.contains('workouts')) {
         const s = d.createObjectStore('workouts', { keyPath: 'id', autoIncrement: true });
         s.createIndex('date', 'date', { unique: false });
+      }
+      if (!d.objectStoreNames.contains('quarters')) {
+        const s = d.createObjectStore('quarters', { keyPath: 'id', autoIncrement: true });
+        s.createIndex('date', 'date', { unique: false });
+        s.createIndex('date_time', ['date', 'time'], { unique: true });
+      }
+      if (!d.objectStoreNames.contains('weights')) {
+        const s = d.createObjectStore('weights', { keyPath: 'id', autoIncrement: true });
+        s.createIndex('date', 'date', { unique: true });
       }
     };
     req.onsuccess = e => { db = e.target.result; resolve(db); };
@@ -45,6 +59,40 @@ async function put(store, obj) { return reqToPromise(tx(store, 'readwrite').put(
 async function del(store, id) { return reqToPromise(tx(store, 'readwrite').delete(id)); }
 async function getById(store, id) { return reqToPromise(tx(store).get(id)); }
 
+// ---------- Quarters: 96 slots/day, same category rules as ~/quarters/quarters.html ----------
+// Kept byte-for-byte identical to the original artifact's `RULES` (per the quarters skill:
+// never re-derive these, read them out of the source of truth) so a label categorizes the
+// same way in both places.
+const Q_RULES = [
+  ['sleep',   ['sleep','asleep','nap','bed','went to bed','in bed','bedtime']],
+  ['consume', ['doomscroll','doomscrolling','doom scroll','scrolling','scroll','youtube','netflix','movie','film','tiktok','instagram','reddit','twitter','anime','series','episode','minecraft','gaming','game','watch','watching','podcast','vlog']],
+  ['build',   ['claude','code','codex','coding','loome','website','build','building','deploy','ledge','audit','auditing','apply','application','cv','resume','portfolio','project','script','debug','design','work']],
+  ['study',   ['duolingo','study','studying','course','class','lecture','escp','exam','revision','thesis','read','reading','anki','homework','assignment']],
+  ['health',  ['deeding','deading','walk','walking','bike','cycling','run','running','gym','lift','workout','stretch','shower','shit','toilet','bath','brush','eat','eating','food','lunch','dinner','breakfast','snack','cook','cooking','groceries','sunlight','rice','pringles','water']],
+  ['people',  ['mommy','mom','mama','papa','family','keluarga','call with','facetime','friend','friends','girlfriend','date','hang out','dinner with']],
+  ['admin',   ['email','mail','inbox','admin','errand','bank','laundry','clean','tidy','pack','packing','commute','metro','train','travel','dress','prepare','preparing','interview','appointment','doctor','visa','paperwork','plan','planning','diary','washing','dishes','plates','transcript']]
+];
+function qNormLabel(s) { return String(s || '').trim().toLowerCase().replace(/\s+/g, ' '); }
+const Q_RULE_RX = Q_RULES.map(r => [r[0], r[1].map(k => new RegExp('\\b' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i'))]);
+function qGuessCat(label) {
+  const n = qNormLabel(label);
+  for (const [cat, rxList] of Q_RULE_RX) {
+    if (rxList.some(rx => rx.test(n))) return cat;
+  }
+  return 'unsorted';
+}
+// A slot's raw text can hold more than one thing done in that 15 minutes, comma-separated
+// (Edwin's own convention, e.g. "Duolingo, breakfast"). Each piece gets its own category;
+// a slot with more than one activity stays unconfirmed, same rule as the tidy loop --
+// he decides the real split, this just makes the pieces visible instead of guessing one.
+function qSplitActivities(label) {
+  return String(label || '').split(',').map(s => s.trim()).filter(Boolean)
+    .map(text => ({ text, category: qGuessCat(text) }));
+}
+function qPad2(n) { return (n < 10 ? '0' : '') + n; }
+function qSlotTime(i) { return qPad2(Math.floor(i / 4)) + ':' + qPad2((i % 4) * 15); }
+const Q_SLOTKEYS = Array.from({ length: 96 }, (_, i) => qSlotTime(i));
+
 // ---------- Seed dataset foods, re-syncing bundled entries without touching custom ones ----------
 // Wrapped so a dead connection on first launch (elevator, subway, airplane mode) can't block
 // the whole app from rendering. It just skips the re-sync and uses whatever's already local.
@@ -63,6 +111,34 @@ async function seedFoodsIfEmpty() {
     }
   } catch (err) {
     console.warn('Food dataset sync skipped (offline or unreachable):', err);
+  }
+}
+
+// ---------- One-time bulk import: German retailer foods (Lidl/Rewe/Edeka/Netto) ----------
+// Unlike seedFoodsIfEmpty (135 curated entries, cheap to re-diff every launch), this is a
+// ~5,000-row import from OpenFoodFacts (scripts/import_off_foods.py) -- diffing/putting all
+// 5,000 rows on every app open would be needless IndexedDB churn on a phone, so it runs once,
+// gated by a localStorage flag, not on every launch like the curated set.
+const DE_IMPORT_FLAG = 'saulog_de_foods_imported_v1';
+async function seedGermanFoodsIfEmpty() {
+  if (localStorage.getItem(DE_IMPORT_FLAG)) return;
+  try {
+    const res = await fetch('./germany_foods.json');
+    if (!res.ok) throw new Error(`germany_foods.json fetch failed (${res.status})`);
+    const dataset = await res.json();
+    const existing = await getAll('foods');
+    const existingByBarcode = new Set(existing.map(f => f.barcode).filter(Boolean));
+    for (const f of dataset) {
+      if (existingByBarcode.has(f.barcode)) continue;
+      await add('foods', {
+        name: f.name, kcal100: f.kcal, protein100: f.protein, carb100: f.carb, fat100: f.fat,
+        barcode: f.barcode, source: 'off-de'
+      });
+    }
+    localStorage.setItem(DE_IMPORT_FLAG, String(dataset.length));
+  } catch (err) {
+    console.warn('German food import skipped (offline or unreachable):', err);
+    // Deliberately not setting the flag -- retry on next launch until it actually succeeds.
   }
 }
 
@@ -384,6 +460,8 @@ async function refreshAll() {
   await renderRecipeList();
   await renderExerciseDatalist();
   await renderWorkouts();
+  await renderWeight();
+  await renderQuarters();
 }
 
 async function renderExerciseDatalist() {
@@ -394,12 +472,22 @@ async function renderExerciseDatalist() {
   window._exercisesCache = exercises;
 }
 
+// With the German import, `foods` can run into the thousands -- rebuilding a <datalist>
+// with every row on every refreshAll() (every log, edit, delete) is a real perf hit on a
+// phone, so the datalist itself only ever holds a name-filtered slice, refreshed as the
+// user types (see filterFoodDatalist), not the full table.
+const FOOD_DATALIST_MAX = 60;
 async function renderFoodDatalist() {
   const foods = await getAll('foods');
   foods.sort((a, b) => a.name.localeCompare(b.name));
-  const dl = $('#foodList');
-  dl.innerHTML = foods.map(f => `<option value="${escapeHtml(f.name)}">`).join('');
   window._foodsCache = foods;
+  filterFoodDatalist('');
+}
+function filterFoodDatalist(query) {
+  const foods = window._foodsCache || [];
+  const q = query.trim().toLowerCase();
+  const matches = (q ? foods.filter(f => f.name.toLowerCase().includes(q)) : foods).slice(0, FOOD_DATALIST_MAX);
+  $('#foodList').innerHTML = matches.map(f => `<option value="${escapeHtml(f.name)}">`).join('');
 }
 
 async function renderRecipeDatalist() {
@@ -543,6 +631,160 @@ async function renderWorkouts() {
   }
 }
 
+// ---------- Body weight (Buhat) ----------
+// One entry per calendar day, tracks currentDate like the rest of the app. The real
+// outcome measure for the recomp goal, which food/workout/time logs don't otherwise connect to.
+async function renderWeight() {
+  const all = await getAll('weights');
+  const today = all.find(w => w.date === currentDate);
+  $('#weightInput').value = today ? today.kg : '';
+
+  const recent = all.filter(w => w.date <= currentDate).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
+  $('#weightRecent').textContent = recent.length
+    ? recent.map(w => `${w.date.slice(5)}: ${w.kg}kg`).join(' · ')
+    : 'No entries yet.';
+}
+
+async function handleWeightSubmit(e) {
+  e.preventDefault();
+  const kg = Number($('#weightInput').value);
+  if (!kg || kg <= 0) { alert('Enter a weight in kg.'); return; }
+
+  const all = await getAll('weights');
+  const existing = all.find(w => w.date === currentDate);
+  const entry = existing || { date: currentDate };
+  entry.kg = round1(kg);
+  entry.id = existing ? existing.id : await add('weights', entry);
+  if (existing) await put('weights', entry);
+
+  const supaRow = { date: entry.date, kg: entry.kg };
+  if (entry.supaId) {
+    await syncUpdate('weight_logs', entry.supaId, supaRow);
+  } else {
+    const supaId = await syncInsert('weight_logs', supaRow);
+    if (supaId) { entry.supaId = supaId; await put('weights', entry); }
+  }
+  await renderWeight();
+}
+
+// ---------- Quarters render/save ----------
+// One doc per slot in IndexedDB (`quarters`, unique on date+time). Category/activities are
+// computed at save time and re-derivable any time from `label`, so nothing gets "finalized"
+// on a timer -- see the note on why (iOS won't reliably run background JS at midnight for a
+// home-screen PWA). The day summary below just recomputes from whatever's saved, live.
+let quartersDayCache = [];
+
+async function renderQuarters() {
+  $('#quartersDate').textContent = formatFullDate(currentDate);
+  const all = await getAll('quarters');
+  const byTime = new Map(all.filter(q => q.date === currentDate).map(q => [q.time, q]));
+  quartersDayCache = Q_SLOTKEYS.map(t => byTime.get(t) || { date: currentDate, time: t, label: '', category: 'unsorted', activities: [] });
+
+  const grid = $('#quartersGrid');
+  grid.innerHTML = Q_SLOTKEYS.map((t, i) => {
+    const entry = quartersDayCache[i];
+    const hourStart = t.endsWith(':00') ? ' hour-start' : '';
+    return `
+      <div class="qrow${hourStart}">
+        <span class="qtime">${t}</span>
+        <span class="qdot" style="background:var(--c-${entry.category})"></span>
+        <input type="text" data-qslot="${t}" value="${escapeHtml(entry.label)}" placeholder="—" autocomplete="off">
+      </div>`;
+  }).join('');
+
+  grid.querySelectorAll('[data-qslot]').forEach(input => {
+    input.addEventListener('change', () => saveQuarterSlot(input.dataset.qslot, input.value));
+  });
+
+  renderQuartersSummary();
+}
+
+async function saveQuarterSlot(time, rawLabel) {
+  const label = rawLabel.trim();
+  const activities = qSplitActivities(label);
+  const category = activities.length ? activities[0].category : 'unsorted';
+  const confirmed = activities.length <= 1;
+
+  const all = await getAll('quarters');
+  const existing = all.find(q => q.date === currentDate && q.time === time);
+
+  if (!label) {
+    if (existing) {
+      if (existing.supaId) await syncDelete('quarters_logs', existing.supaId);
+      await del('quarters', existing.id);
+    }
+    await renderQuarters();
+    return;
+  }
+
+  const entry = existing || { date: currentDate, time };
+  Object.assign(entry, { label, category, activities, confirmed });
+  entry.id = existing ? existing.id : await add('quarters', entry);
+  if (existing) await put('quarters', entry);
+
+  const supaRow = { date: entry.date, time: entry.time, label: entry.label, category: entry.category, confirmed: entry.confirmed };
+  if (entry.supaId) {
+    await syncUpdate('quarters_logs', entry.supaId, supaRow);
+  } else {
+    const supaId = await syncInsert('quarters_logs', supaRow);
+    if (supaId) { entry.supaId = supaId; await put('quarters', entry); }
+  }
+
+  // Update the dot/state on that row without a full re-render, and the row below it (row's
+  // own input already shows what the user typed, no need to touch its value).
+  const row = $(`[data-qslot="${time}"]`)?.closest('.qrow');
+  if (row) row.querySelector('.qdot').style.background = `var(--c-${category})`;
+  renderQuartersSummary();
+}
+
+function renderQuartersSummary() {
+  const box = $('#quartersSummary');
+  if (!box) return;
+  const totals = {};
+  const activityList = [];
+  let loggedSlots = 0;
+  for (const entry of quartersDayCache) {
+    if (!entry.label) continue;
+    loggedSlots++;
+    const activities = entry.activities && entry.activities.length ? entry.activities : qSplitActivities(entry.label);
+    for (const a of activities) {
+      totals[a.category] = (totals[a.category] || 0) + 15 / activities.length; // split the 15min across co-occurring activities
+      activityList.push(a.text);
+    }
+  }
+  if (loggedSlots === 0) { box.innerHTML = '<p class="muted small">No slots logged yet for this day.</p>'; return; }
+
+  const catRows = Object.entries(totals).sort((a, b) => b[1] - a[1]).map(([cat, mins]) => {
+    const h = Math.floor(mins / 60), m = Math.round(mins % 60);
+    const dur = h && m ? `${h}h ${m}m` : h ? `${h}h` : `${m}m`;
+    return `<div class="row between small" style="margin-bottom:4px;"><span><span class="qdot" style="background:var(--c-${cat}); display:inline-block; margin-right:6px;"></span>${cat}</span><span class="muted">${dur}</span></div>`;
+  }).join('');
+
+  const untracked = (96 - loggedSlots) * 15;
+  const uh = Math.floor(untracked / 60), um = untracked % 60;
+  const untrackedStr = uh && um ? `${uh}h ${um}m` : uh ? `${uh}h` : `${um}m`;
+
+  // Unique activities, most-recent-first, deduped case-insensitively for a quick glance.
+  const seen = new Set();
+  const uniqueActivities = activityList.reverse().filter(a => {
+    const k = a.toLowerCase();
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+
+  box.innerHTML = `
+    <div class="card">
+      <strong class="small">Category totals</strong>
+      <div style="margin-top:6px;">${catRows}</div>
+      <div class="muted small" style="margin-top:4px;">${untrackedStr} untracked</div>
+    </div>
+    <div class="card">
+      <strong class="small">Activities today (${uniqueActivities.length})</strong>
+      <div class="muted small" style="margin-top:6px;">${uniqueActivities.map(escapeHtml).join(' · ')}</div>
+    </div>`;
+}
+
 // ---------- Undo (soft-delete for logs/workouts) ----------
 // A "deleted" row is hidden from render immediately but not actually removed from
 // IndexedDB/Supabase until UNDO_DELAY_MS passes with no undo, so a mis-tap is always
@@ -619,6 +861,10 @@ async function findFoodByName(name) {
 async function findRecipeByName(name) {
   const recipes = window._recipesCache || await getAll('recipes');
   return recipes.find(r => r.name.toLowerCase() === name.trim().toLowerCase());
+}
+async function findFoodByBarcode(barcode) {
+  const foods = window._foodsCache || await getAll('foods');
+  return foods.find(f => f.barcode === barcode);
 }
 async function findExerciseByName(name) {
   const exercises = window._exercisesCache || await getAll('exercises');
@@ -1033,6 +1279,77 @@ function closeSearchModal() {
   $('#searchModal').hidden = true;
 }
 
+// ---------- Barcode scan modal ----------
+// Lookup order (Edwin's call): local IndexedDB first (instant, offline-safe, covers the
+// ~5,000-item German import), live OpenFoodFacts product lookup only if not found locally.
+let scanTargetInput = null;
+let scanner = null;
+
+function openScanModal(targetId) {
+  if (typeof Html5Qrcode === 'undefined') { alert('Barcode scanner failed to load (offline?). Use Search or type the name instead.'); return; }
+  scanTargetInput = $('#' + targetId);
+  $('#scanStatus').textContent = 'Point the camera at the barcode.';
+  $('#scanModal').hidden = false;
+  scanner = new Html5Qrcode('scanReader', { formatsToSupport: [Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8, Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E] });
+  scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 250, height: 120 } }, onBarcodeDetected, () => {})
+    .catch(err => { $('#scanStatus').textContent = `Camera failed: ${err}. Check camera permission in Settings.`; });
+}
+
+async function closeScanModal() {
+  if (scanner) {
+    try { await scanner.stop(); scanner.clear(); } catch (err) { /* already stopped */ }
+    scanner = null;
+  }
+  $('#scanModal').hidden = true;
+}
+
+async function onBarcodeDetected(code) {
+  if (!scanner) return; // already handling one, ignore repeat frames
+  const active = scanner;
+  scanner = null; // stop re-entrant detections while we look this one up
+  try { await active.pause(true); } catch (err) { /* ignore */ }
+
+  $('#scanStatus').textContent = `Found ${code}, looking up…`;
+  let food = await findFoodByBarcode(code);
+  if (!food) food = await lookupBarcodeLive(code);
+
+  if (food) {
+    if (scanTargetInput) scanTargetInput.value = food.name;
+    await closeScanModal();
+    await renderFoodDatalist();
+  } else {
+    $('#scanStatus').textContent = `"${code}" isn't in the local library or OpenFoodFacts. Close this and enter it manually, or use Search.`;
+    scanner = active;
+    try { await scanner.resume(); } catch (err) { /* ignore */ }
+  }
+}
+
+// Live fallback for a barcode not in the ~5,000-item local import. Adds it to the food
+// library on a hit so future scans/typing of the same product resolve locally.
+async function lookupBarcodeLive(code) {
+  try {
+    const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json?fields=code,product_name,brands,nutriments`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const p = data.product;
+    const n = p && p.nutriments;
+    if (!p || !n || n['energy-kcal_100g'] == null || n.proteins_100g == null || n.carbohydrates_100g == null || n.fat_100g == null) return null;
+    const brand = (p.brands || '').split(',')[0].trim();
+    let name = (p.product_name || '').trim();
+    if (!name) return null;
+    if (brand && !name.toLowerCase().includes(brand.toLowerCase())) name = `${name} (${brand})`;
+    const row = {
+      name, kcal100: round1(n['energy-kcal_100g']), protein100: round1(n.proteins_100g),
+      carb100: round1(n.carbohydrates_100g), fat100: round1(n.fat_100g), barcode: code, source: 'off-live'
+    };
+    const id = await add('foods', row);
+    return { id, ...row };
+  } catch (err) {
+    console.warn('Live OpenFoodFacts lookup failed:', err);
+    return null;
+  }
+}
+
 async function handleSearchSubmit(e) {
   e.preventDefault();
   const query = $('#searchInput').value.trim();
@@ -1107,6 +1424,8 @@ function shiftDate(days) {
   currentDate = d.toISOString().slice(0, 10);
   renderLog();
   renderWorkouts();
+  renderWeight();
+  renderQuarters();
 }
 
 // ---------- Tabs ----------
@@ -1149,22 +1468,26 @@ async function init() {
   await openDB();
   loadCachedTargets();
   await seedFoodsIfEmpty();
+  await seedGermanFoodsIfEmpty();
   await seedExercisesIfEmpty();
   await refreshAll();
   initTabs();
 
   $('#logForm').addEventListener('submit', handleLogSubmit);
-  $('#logName').addEventListener('input', updateWeightHint);
+  $('#logName').addEventListener('input', e => { updateWeightHint(); filterFoodDatalist(e.target.value); });
   $('#logCancelEditBtn').addEventListener('click', cancelEditLog);
   $('#ingForm').addEventListener('submit', handleAddIngredient);
+  $('#ingName').addEventListener('input', e => filterFoodDatalist(e.target.value));
   $('#recipeForm').addEventListener('submit', handleSaveRecipe);
   $('#prevDay').addEventListener('click', () => shiftDate(-1));
   $('#nextDay').addEventListener('click', () => shiftDate(1));
-  $('#todayBtn').addEventListener('click', () => { currentDate = todayStr(); renderLog(); renderWorkouts(); });
+  $('#todayBtn').addEventListener('click', () => { currentDate = todayStr(); renderLog(); renderWorkouts(); renderWeight(); renderQuarters(); });
   $('#searchFoodBtn').addEventListener('click', () => openSearchModal('logName'));
   $('#searchIngBtn').addEventListener('click', () => openSearchModal('ingName'));
   $('#closeSearchModal').addEventListener('click', closeSearchModal);
   $('#searchForm').addEventListener('submit', handleSearchSubmit);
+  $('#scanBarcodeBtn').addEventListener('click', () => openScanModal('logName'));
+  $('#closeScanModal').addEventListener('click', closeScanModal);
   $('#saveApiKeyBtn').addEventListener('click', handleSaveApiKey);
   $('#removeApiKeyBtn').addEventListener('click', handleRemoveApiKey);
   renderApiKeyStatus();
@@ -1183,7 +1506,11 @@ async function init() {
   updateCardioOtherVisibility();
   $('#wPrevDay').addEventListener('click', () => shiftDate(-1));
   $('#wNextDay').addEventListener('click', () => shiftDate(1));
-  $('#wTodayBtn').addEventListener('click', () => { currentDate = todayStr(); renderLog(); renderWorkouts(); });
+  $('#wTodayBtn').addEventListener('click', () => { currentDate = todayStr(); renderLog(); renderWorkouts(); renderWeight(); });
+  $('#weightForm').addEventListener('submit', handleWeightSubmit);
+  $('#qPrevDay').addEventListener('click', () => shiftDate(-1));
+  $('#qNextDay').addEventListener('click', () => shiftDate(1));
+  $('#qTodayBtn').addEventListener('click', () => { currentDate = todayStr(); renderLog(); renderWorkouts(); renderWeight(); renderQuarters(); });
 
   $('#syncSignInBtn').addEventListener('click', handleSyncSignIn);
   $('#syncSignOutBtn').addEventListener('click', handleSyncSignOut);

@@ -55,12 +55,80 @@ create table if not exists public.targets (
   updated_at timestamptz not null default now()
 );
 
+-- Quarters (added 2026-09-09): the 15-min time tracker, rebuilt as a Saulog OS tab
+-- alongside Kain/Buhat instead of living only in its old Claude Artifact db. Fresh
+-- start per Edwin's call -- pre-migration days stay archived in the old Artifact,
+-- not backfilled here. One row per 15-min slot (96/day), `time` in HH:MM 24h.
+create table if not exists public.quarters_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  date date not null,
+  time text not null,
+  label text not null,
+  category text not null default 'unsorted',
+  confirmed boolean not null default false,
+  created_at timestamptz not null default now(),
+  unique (user_id, date, time)
+);
+
+-- Body weight (added 2026-09-09): one entry per day, the real outcome measure for the
+-- recomp goal that food/workout/time logs don't otherwise connect to. Lives in Buhat.
+create table if not exists public.weight_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  date date not null,
+  kg numeric not null,
+  created_at timestamptz not null default now(),
+  unique (user_id, date)
+);
+
+-- Apple Health metrics (added 2026-09-09), written by an iOS Shortcut Edwin runs on his
+-- phone (Safari/a PWA can never read HealthKit directly -- this is the only real bridge).
+-- One row per day; a Shortcut run upserts (PATCH on conflict) rather than inserting blind,
+-- so re-running it the same day just updates today's numbers.
+create table if not exists public.health_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  date date not null,
+  steps integer,
+  sleep_hours numeric,
+  created_at timestamptz not null default now(),
+  unique (user_id, date)
+);
+
 create index if not exists food_logs_user_date_idx on public.food_logs (user_id, date);
 create index if not exists workout_logs_user_date_idx on public.workout_logs (user_id, date);
+create index if not exists quarters_logs_user_date_idx on public.quarters_logs (user_id, date);
+create index if not exists weight_logs_user_date_idx on public.weight_logs (user_id, date);
+-- Strava (added 2026-09-09): pulled in by scripts/sync_strava.py using a refresh token
+-- Edwin generates himself (see docs/strava-setup.md), not written by the app itself. One
+-- row per Strava activity, kept separate from workout_logs (different shape -- distance/
+-- pace/elevation, not sets/reps) so Buhat's own strength/cardio logging is untouched.
+create table if not exists public.strava_activities (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  strava_id bigint not null,
+  date date not null,
+  name text,
+  type text,
+  distance_km numeric,
+  moving_time_min numeric,
+  elevation_m numeric,
+  avg_hr numeric,
+  created_at timestamptz not null default now(),
+  unique (user_id, strava_id)
+);
+
+create index if not exists health_logs_user_date_idx on public.health_logs (user_id, date);
+create index if not exists strava_activities_user_date_idx on public.strava_activities (user_id, date);
 
 alter table public.food_logs enable row level security;
 alter table public.workout_logs enable row level security;
 alter table public.targets enable row level security;
+alter table public.quarters_logs enable row level security;
+alter table public.weight_logs enable row level security;
+alter table public.health_logs enable row level security;
+alter table public.strava_activities enable row level security;
 
 -- Each user (in practice: just Edwin) can only ever see or touch their own rows.
 create policy "food_logs: owner select" on public.food_logs
@@ -86,6 +154,42 @@ create policy "workout_logs: owner delete" on public.workout_logs
 create policy "targets: owner select" on public.targets
   for select using (auth.uid() = user_id);
 
+create policy "quarters_logs: owner select" on public.quarters_logs
+  for select using (auth.uid() = user_id);
+create policy "quarters_logs: owner insert" on public.quarters_logs
+  for insert with check (auth.uid() = user_id);
+create policy "quarters_logs: owner update" on public.quarters_logs
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "quarters_logs: owner delete" on public.quarters_logs
+  for delete using (auth.uid() = user_id);
+
+create policy "weight_logs: owner select" on public.weight_logs
+  for select using (auth.uid() = user_id);
+create policy "weight_logs: owner insert" on public.weight_logs
+  for insert with check (auth.uid() = user_id);
+create policy "weight_logs: owner update" on public.weight_logs
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "weight_logs: owner delete" on public.weight_logs
+  for delete using (auth.uid() = user_id);
+
+create policy "health_logs: owner select" on public.health_logs
+  for select using (auth.uid() = user_id);
+create policy "health_logs: owner insert" on public.health_logs
+  for insert with check (auth.uid() = user_id);
+create policy "health_logs: owner update" on public.health_logs
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "health_logs: owner delete" on public.health_logs
+  for delete using (auth.uid() = user_id);
+
+create policy "strava_activities: owner select" on public.strava_activities
+  for select using (auth.uid() = user_id);
+create policy "strava_activities: owner insert" on public.strava_activities
+  for insert with check (auth.uid() = user_id);
+create policy "strava_activities: owner update" on public.strava_activities
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "strava_activities: owner delete" on public.strava_activities
+  for delete using (auth.uid() = user_id);
+
 -- RLS restricts access, it doesn't grant it — a role still needs the baseline table-level
 -- privilege before Postgres even evaluates a policy. If "Automatically expose new tables"
 -- is off at project creation (the recommended setting, see HANDOFF.md), these grants are
@@ -95,6 +199,9 @@ grant select, insert, update, delete on public.food_logs to authenticated, servi
 grant select, insert, update, delete on public.workout_logs to authenticated, service_role;
 grant select on public.targets to authenticated;
 grant select, insert, update, delete on public.targets to service_role;
+grant select, insert, update, delete on public.quarters_logs to authenticated, service_role;
+grant select, insert, update, delete on public.weight_logs to authenticated, service_role;
+grant select, insert, update, delete on public.health_logs to authenticated, service_role;
 
 -- Nippard/Sevro read access goes through scripts/query-logs.py using the service_role key,
 -- which bypasses RLS by design (it's a trusted server-side key, never shipped in this repo).

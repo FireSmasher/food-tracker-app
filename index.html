@@ -9,7 +9,7 @@
 <link rel="apple-touch-icon" href="./icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' https://api.nal.usda.gov https://wger.de https://*.supabase.co; img-src 'self' data:; script-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' https://api.nal.usda.gov https://wger.de https://*.supabase.co https://world.openfoodfacts.org; img-src 'self' data: blob:; script-src 'self' https://cdnjs.cloudflare.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
 <style>
   @font-face { font-family: 'Satoshi'; src: url('./fonts/satoshi-400_normal.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: swap; }
   @font-face { font-family: 'Satoshi'; src: url('./fonts/satoshi-400_italic.woff2') format('woff2'); font-weight: 400; font-style: italic; font-display: swap; }
@@ -23,6 +23,10 @@
     --input-bg: #f6f1e4; --notes-bg: #efe8d8; --on-accent: #2b1f10;
     --font-display: 'Cormorant Garamond', Georgia, serif;
     --font-body: 'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
+    /* Same palette as the original Quarters artifact (~/quarters/quarters.html), kept
+       identical so a category reads the same color in both places. */
+    --c-admin: #A8871F; --c-build: #2E62D6; --c-consume: #E85B8A; --c-study: #0FA3B8;
+    --c-people: #E8722A; --c-sleep: #8B62E8; --c-health: #0D8A57; --c-unsorted: #8A8F99;
   }
   * { box-sizing: border-box; }
   html { height: 100%; }
@@ -78,7 +82,16 @@
   .tab { flex: 1; text-align: center; padding: 12px 0; color: var(--muted); font-size: 12px; background: none; border-radius: 0; }
   .tab.active { color: var(--accent); }
   h2 { font-family: var(--font-display); font-weight: 600; font-size: 19px; letter-spacing: 0.5px; margin: 18px 0 8px; }
-  #logDate, #workoutDate { font-family: var(--font-body); font-weight: 700; font-size: 17px; letter-spacing: 0.2px; }
+  #logDate, #workoutDate, #quartersDate { font-family: var(--font-body); font-weight: 700; font-size: 17px; letter-spacing: 0.2px; }
+  .qgrid { display: flex; flex-direction: column; gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .qrow { display: flex; align-items: center; gap: 8px; background: var(--card); padding: 4px 8px; }
+  .qrow .qtime { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted); width: 40px; flex: 0 0 auto; }
+  .qrow .qdot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; background: var(--c-unsorted); }
+  .qrow input[type=text] { margin-bottom: 0; padding: 6px 8px; font-size: 14px; border: none; background: transparent; }
+  .qrow.hour-start { border-top: 2px solid var(--border); }
+  .qlegend { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; font-size: 11px; color: var(--muted); }
+  .qlegend span { display: inline-flex; align-items: center; gap: 4px; }
+  .qlegend i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
   .target-row { margin-bottom: 10px; }
   .target-row:last-child { margin-bottom: 0; }
   .bar-track { height: 8px; border-radius: 4px; background: var(--input-bg); overflow: hidden; margin-top: 4px; }
@@ -132,6 +145,7 @@
       <div class="row" style="margin-bottom:8px;">
         <input type="text" id="logName" list="foodList" placeholder="e.g. Chicken breast, raw" autocomplete="off" style="margin-bottom:0;">
         <button type="button" class="ghost small" id="searchFoodBtn" data-target="logName">Search</button>
+        <button type="button" class="ghost small" id="scanBarcodeBtn">Scan</button>
       </div>
       <datalist id="foodList"></datalist>
       <datalist id="recipeList"></datalist>
@@ -188,6 +202,19 @@
     </div>
     <button id="wNextDay">›</button>
   </div>
+
+  <form id="weightForm" class="card">
+    <div class="row between">
+      <div>
+        <label class="field" style="margin-bottom:2px;">Body weight (kg)</label>
+        <div id="weightRecent" class="muted small"></div>
+      </div>
+      <div class="row" style="gap:6px;">
+        <input type="number" id="weightInput" step="0.1" min="1" placeholder="e.g. 93.4" style="margin-bottom:0; width:100px;">
+        <button type="submit" class="ghost small">Save</button>
+      </div>
+    </div>
+  </form>
 
   <form id="workoutForm" class="card">
     <label class="field">Split</label>
@@ -265,6 +292,29 @@
   <div id="workoutBox"></div>
 </div>
 
+<div id="panel-quarters" class="panel">
+  <div class="datenav">
+    <button id="qPrevDay">‹</button>
+    <div class="row" style="gap:6px;">
+      <strong id="quartersDate"></strong>
+      <button id="qTodayBtn" class="ghost small">today</button>
+    </div>
+    <button id="qNextDay">›</button>
+  </div>
+  <div class="qlegend">
+    <span><i style="background:var(--c-sleep)"></i>sleep</span>
+    <span><i style="background:var(--c-build)"></i>build</span>
+    <span><i style="background:var(--c-consume)"></i>consume</span>
+    <span><i style="background:var(--c-study)"></i>study</span>
+    <span><i style="background:var(--c-health)"></i>health</span>
+    <span><i style="background:var(--c-people)"></i>people</span>
+    <span><i style="background:var(--c-admin)"></i>admin</span>
+    <span><i style="background:var(--c-unsorted)"></i>unsorted</span>
+  </div>
+  <div id="quartersSummary" style="margin-bottom:12px;"></div>
+  <div id="quartersGrid" class="qgrid"></div>
+</div>
+
 <div id="panel-settings" class="panel">
   <div class="row between" style="margin-bottom:6px;">
     <h2 style="margin:0;">Settings</h2>
@@ -313,9 +363,21 @@
   </div>
 </div>
 
+<div id="scanModal" class="modal-overlay" hidden>
+  <div class="modal-sheet">
+    <div class="row between">
+      <h2 style="margin:0;">Scan barcode</h2>
+      <button type="button" class="ghost small" id="closeScanModal">Close</button>
+    </div>
+    <div id="scanReader" style="margin-top:10px;"></div>
+    <div id="scanStatus" class="muted small" style="margin-top:8px;"></div>
+  </div>
+</div>
+
 <nav class="tabs">
   <button class="tab active" data-tab="kain">Kain</button>
   <button class="tab" data-tab="buhat">Buhat</button>
+  <button class="tab" data-tab="quarters">Quarters</button>
 </nav>
 
 <div id="undoToast" class="undo-toast" hidden>
@@ -323,6 +385,7 @@
   <button type="button" id="undoBtn" class="ghost small">Undo</button>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 <script src="./config.js"></script>
 <script src="./app.js"></script>
 </body>

@@ -7,6 +7,7 @@ automatically. Run it when a session actually needs to see what was logged, e.g.
     python3 query-logs.py --since 2026-09-01
     python3 query-logs.py --since 2026-09-01 --until 2026-09-08 --table workout_logs
     python3 query-logs.py --today
+    python3 query-logs.py --today --table quarters_logs
 
 Credentials come from ~/.saulog-os-service.json, a local file OUTSIDE this repo that
 Edwin creates himself (see HANDOFF.md "Setup: Supabase"). It holds the service_role
@@ -76,7 +77,7 @@ def main():
         until = date.today().isoformat()
 
     cfg = load_config()
-    tables = ["food_logs", "workout_logs"] if table == "both" else [table]
+    tables = ["food_logs", "workout_logs", "quarters_logs", "weight_logs"] if table == "both" else [table]
 
     out = {}
     for t in tables:

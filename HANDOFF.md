@@ -1,4 +1,4 @@
-# Handoff: Saulog OS (Kain + Buhat)
+# Handoff: Saulog OS (Kain + Buhat + Quarters)
 
 Status as of 2026-09-08, end of day. This file was rewritten from scratch on this
 date to consolidate five rounds of same-day work into one current reference — the
@@ -293,3 +293,61 @@ gate). `~/.saulog-os-service.json` (local, untracked, Edwin-created-only) holds
    log entry (`startEditLog`/`saveEditedLog`/`syncUpdate` in `app.js`) so a
    wrong name/grams/notes can be corrected in place instead of delete-and-
    relog — updates IndexedDB and, if synced, PATCHes the Supabase row.
+7. **Round 7 (2026-09-09) — German food import, barcode scan, Quarters tab,
+   body weight, Health/Strava bridges.** Big one, several distinct asks in the
+   same session:
+   - **German retailer food import.** `scripts/import_off_foods.py` pulls
+     OpenFoodFacts data tagged Lidl/Rewe/Edeka/Netto (in that priority order,
+     Edwin's call), dedupes by barcode, caps at 5,000 — landed 3,462 usable
+     entries (`germany_foods.json`) since OFF's public API was flaky (rolling
+     503/401s) and cut Netto (lowest priority) short; Lidl/Rewe/Edeka got
+     through mostly intact. Imported once into IndexedDB via
+     `seedGermanFoodsIfEmpty()`, gated by a `localStorage` flag so it doesn't
+     re-diff 3,462 rows on every launch like the small curated `foods.json`
+     does. `renderFoodDatalist`/`filterFoodDatalist` were changed to filter
+     on typing (max 60 shown) instead of dumping every row into the
+     `<datalist>` — that broke down at this scale.
+   - **Barcode scanning.** `html5-qrcode` (cdnjs) reads EAN/UPC codes via the
+     camera; looks up the local `foods` store by a new `barcode` index first
+     (DB bumped to v3 for this), falls back to a live OpenFoodFacts product
+     lookup and adds a hit to the library. CSP updated: `script-src` now
+     allows `cdnjs.cloudflare.com`, `connect-src` allows
+     `world.openfoodfacts.org`, `img-src` allows `blob:` for the camera feed.
+   - **Quarters tab (DB v4).** The old Quarters Claude Artifact
+     (`~/quarters/quarters.html`) is rebuilt as a third bottom-nav tab here,
+     fresh start per Edwin's call — pre-migration days stay archived in the
+     old Artifact, not backfilled. 96 slots/day, military time, `00:00`
+     first slot. Category rules (`Q_RULES` in `app.js`) are a byte-for-byte
+     copy of the original `RULES` array so a label categorizes the same way
+     in both places. Edwin's own convention of comma-separating multiple
+     things done in one 15-min slot ("Duolingo, breakfast") is parsed and
+     each piece categorized separately (`qSplitActivities`); a multi-activity
+     slot's 15 minutes gets split proportionally across those categories in
+     the day summary rather than assigned whole to just the first one. Synced
+     to a new `quarters_logs` Supabase table (needs the updated
+     `supabase/schema.sql` run manually). **No midnight "finalize" job** — iOS
+     won't reliably run background JS for a home-screen PWA at a fixed time,
+     so the day summary (category totals + activity list) is computed live
+     on read instead, same result without depending on a timer that might
+     not fire.
+   - **Body weight (Buhat, DB v5).** One entry per day, `weight_logs` table,
+     small form above the workout log — closes the gap that food/workout/
+     time logs didn't connect to the actual recomp outcome measure.
+   - **Apple Health and Strava bridges, plumbing only.** Neither can be built
+     from inside this PWA (HealthKit isn't reachable from Safari at all;
+     Strava needs an OAuth app only Edwin can register). Added `health_logs`
+     and `strava_activities` tables plus `scripts/sync_strava.py`, and wrote
+     `docs/apple-health-shortcut.md` / `docs/strava-setup.md` as exact
+     walkthroughs for the phone-side/browser-side setup steps only Edwin can
+     do. Nothing in the app displays `health_logs` or `strava_activities`
+     yet — they're queryable via `query-logs.py --table health_logs` etc.,
+     not shown in the UI. Ask specifically if an in-app view is wanted.
+   - `query-logs.py` now reads `quarters_logs` and `weight_logs` too (default
+     `--table both` covers all four); both Nippard's and Sevro's
+     `SAULOG_OS_SYNC.md` copies updated to mention Quarters.
+   - **Outstanding: `supabase/schema.sql` has NOT been run against the live
+     project.** `quarters_logs`, `weight_logs`, `health_logs`, and
+     `strava_activities` don't exist in Supabase yet — Edwin needs to run the
+     updated file in the SQL editor before any of these sync for real
+     (IndexedDB/local will still work, sync will silently no-op until then,
+     same graceful-degradation behavior as any other offline case).

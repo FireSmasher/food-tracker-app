@@ -237,8 +237,52 @@ diagnostic, result not yet reported back.
   `Prefer` header value has a typo, reads `resolution=marge-duplicates`, must
   be `merge`.
 
-  He does NOT need to send a `date` — `health_logs.date` now defaults to
+  He does NOT need to send a `date`. `health_logs.date` now defaults to
   today in Europe/Berlin, verified by a live test insert.
+
+  **Researched 2026-09-09 after he called the manual build a waste of his
+  evening. Conclusions, so nobody re-runs this research:**
+  - **The two Health actions can only be added on the iPhone. This is a hard
+    floor, not a preference.** macOS has no HealthKit, and the Mac Shortcuts
+    action library has no Health category at all (verified by hand: it lists
+    Controls/Device/Location/Media/Sharing/Documents/Web/Scripting, nothing
+    else). No amount of Mac-side automation removes those ~6 taps.
+  - **His Mac CAN see and edit the shortcut**, though. iCloud Shortcuts sync
+    is on: `shortcuts list` on the Mac shows his half-built one (named "Get
+    Contents of URL", since it was never renamed), and `shortcuts view <name>`
+    opens it. Anything edited on the Mac syncs back to the phone.
+    `/usr/bin/shortcuts` exists, with run/list/view/sign subcommands.
+  - **But synthetic keystrokes don't land in Shortcuts.app's fields.** Clicks
+    register via System Events; typed text does not reach the action search
+    box. Also, walking the app's accessibility tree (`entire contents of
+    window 1`) hangs past 120s, far too large to enumerate. So Mac-side GUI
+    automation of Shortcuts is not a viable route either.
+  - **iPhone Mirroring is out** (EU region block, see Round 10).
+  - **Generating a `.shortcut` file is a no-go.** Action identifiers and
+    UUID variable-wiring are undocumented and fail silently; the maintained
+    library for it (`shortcuts-js`) was archived Aug 2024 and predates the
+    signing requirement. macOS `shortcuts sign --mode anyone` does exist and
+    would handle signing, but authoring a valid plist blind is the rabbit
+    hole, not the signing.
+  - **Health Auto Export** (App Store, by Lybron) does support custom HTTP
+    headers and a daily background schedule, confirmed from its own docs. Two
+    catches: automated REST export needs its Premium tier (~$25 lifetime, or
+    a subscription), and its JSON body is a fixed nested `metrics`/`workouts`
+    envelope that can't be remapped to our column names, so it would need the
+    Edge Function below as a reshaper. Worth revisiting only if he ever wants
+    to drop Shortcuts entirely.
+  - **`supabase/functions/health-ingest/index.ts` is written and ready** but
+    NOT deployed. It accepts one POST carrying an `X-Shared-Secret` header and
+    upserts the row server-side with the service-role key. Deploying it would
+    let the Shortcut drop its two auth actions and, more importantly, get his
+    Supabase account password off his phone. Confirmed deployable entirely
+    from the dashboard (Edge Functions, Deploy a new function, Via Editor;
+    secrets under Project Settings, Edge Functions, Secrets; "Enforce JWT
+    Verification" toggled off on the function's Details page). No CLI needed,
+    which matters because he has none. Free tier is 500k invocations/month.
+    **Be honest about its value if offering it: it does NOT reduce the
+    phone-side work, because the Health actions are needed either way. It is
+    a security improvement, not a shortcut to finishing.**
 - **Strava is a dead end, don't re-propose it.** 2026-09-09: Edwin went to
   register the API app and found Strava now requires a paid subscription for
   API access. He isn't subscribing, and said he relies on Apple Health and

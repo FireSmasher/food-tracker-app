@@ -75,7 +75,7 @@ limitation, not a bug, and matches how any snapshot-based tracker behaves.
 
 ## Where this shows up
 
-Nothing in Kain/Buhat/Quarters displays `health_logs` yet -- this doc only covers getting
-the data *into* Supabase. `scripts/query-logs.py --table health_logs --today` reads it back
-for a Nippard/Sevro session. A dashboard view inside the app itself hasn't been built; ask
-for it specifically if you want steps/sleep visible in the PWA rather than just queryable.
+As of 2026-09-09, Buhat has a "Health & Strava" card that reads today's `health_logs` row
+back (steps/sleep) once you're signed into Sync -- this doc only covers getting the data
+*into* Supabase in the first place. `scripts/query-logs.py --table health_logs --today` also
+reads it back for a Nippard/Sevro session.

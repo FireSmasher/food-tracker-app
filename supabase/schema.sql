@@ -97,9 +97,23 @@ create table if not exists public.health_logs (
   date date not null,
   steps integer,
   sleep_hours numeric,
+  active_energy_kcal numeric,
+  exercise_minutes numeric,
+  workout_type text,
+  resting_hr numeric,
   created_at timestamptz not null default now(),
   unique (user_id, date)
 );
+
+-- Added 2026-09-09, after health_logs already existed in the live project: `create table
+-- if not exists` above is a no-op there, so new columns need explicit alters. Edwin picked
+-- these four when Strava fell through and Apple Health/Fitness became the only body-data
+-- source. Nothing sums active_energy_kcal against Kain's food totals -- his kcal target is
+-- a fixed Nippard number, so this is informational, not a TDEE adjustment.
+alter table public.health_logs add column if not exists active_energy_kcal numeric;
+alter table public.health_logs add column if not exists exercise_minutes numeric;
+alter table public.health_logs add column if not exists workout_type text;
+alter table public.health_logs add column if not exists resting_hr numeric;
 
 create index if not exists food_logs_user_date_idx on public.food_logs (user_id, date);
 create index if not exists workout_logs_user_date_idx on public.workout_logs (user_id, date);

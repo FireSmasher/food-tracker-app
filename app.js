@@ -725,14 +725,23 @@ async function renderHealth() {
   healthBox.textContent = 'Loading…';
 
   try {
-    const res = await supabaseRequest(`/rest/v1/health_logs?select=steps,sleep_hours&date=eq.${currentDate}&limit=1`);
+    const cols = 'steps,sleep_hours,active_energy_kcal,exercise_minutes,workout_type,resting_hr';
+    const res = await supabaseRequest(`/rest/v1/health_logs?select=${cols}&date=eq.${currentDate}&limit=1`);
     const rows = res && res.ok ? await res.json() : [];
     const row = rows[0];
-    healthBox.textContent = row
-      ? [row.steps != null ? `${row.steps.toLocaleString()} steps` : null,
-         row.sleep_hours != null ? `${row.sleep_hours}h sleep` : null]
-          .filter(Boolean).join(' · ') || 'Row synced, no fields set.'
-      : `No Health data for ${currentDate.slice(5)} yet.`;
+    if (!row) {
+      healthBox.textContent = `No Health data for ${currentDate.slice(5)} yet.`;
+      return;
+    }
+    const parts = [
+      row.steps != null ? `${row.steps.toLocaleString()} steps` : null,
+      row.active_energy_kcal != null ? `${Math.round(row.active_energy_kcal)} kcal burned` : null,
+      row.exercise_minutes != null ? `${Math.round(row.exercise_minutes)} min exercise` : null,
+      row.workout_type ? escapeHtml(row.workout_type) : null,
+      row.sleep_hours != null ? `${row.sleep_hours}h sleep` : null,
+      row.resting_hr != null ? `${Math.round(row.resting_hr)} bpm resting` : null
+    ].filter(Boolean);
+    healthBox.innerHTML = parts.length ? parts.join(' · ') : 'Row synced, no fields set.';
   } catch (err) {
     console.warn('Health log fetch skipped:', err);
     healthBox.textContent = 'Couldn\'t load (offline?).';

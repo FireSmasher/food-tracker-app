@@ -206,6 +206,16 @@ diagnostic, result not yet reported back.
 
 ## Known limitations (current, not historical)
 
+- **`supabase/schema.sql` not yet run against the live project (2026-09-09).**
+  `quarters_logs`, `weight_logs`, `health_logs`, `strava_activities` exist in
+  the schema file but not in the real Supabase project. Quarters/weight
+  logging works fine locally on the phone either way, it just won't sync
+  until this is run. Edwin needs to paste the file into the Supabase SQL
+  editor and run it — see "Setup reference: Supabase project" below.
+- **Apple Health Shortcut not built yet** — walkthrough at
+  `docs/apple-health-shortcut.md`, phone-side setup only Edwin can do.
+- **Strava not connected yet** — walkthrough at `docs/strava-setup.md`,
+  needs Edwin to register a Strava API app and do a one-time OAuth step.
 - **No offline sync queue.** A log made while offline or signed out stays
   local-only until it syncs on its own — there's no outbox/retry mechanism
   that catches up later in the same session. Scope call, not an oversight.

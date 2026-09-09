@@ -193,8 +193,13 @@ diagnostic, result not yet reported back.
   risk, not a theoretical one.
 - The strongest actual mitigation is getting Edwin to sign into Sync as his
   normal mode of use, not an optional extra — that makes Supabase a real
-  backup independent of whatever iOS does to local storage next time. This
-  hasn't been pushed on him explicitly yet; worth raising again.
+  backup independent of whatever iOS does to local storage next time.
+  **Update, same evening:** confirmed via `scripts/query-logs.py --today`
+  that he's now signed in and actively syncing — 5 food logs and a full
+  5-exercise Push workout from tonight both round-tripped to Supabase. Don't
+  re-raise this as an open ask; it's done. If a future `query-logs.py` check
+  ever comes back empty for a day he says he logged, that's the signal he's
+  fallen back to signed-out/local-only and it's worth surfacing again.
 - The "no offline sync queue" known limitation (see below) is a related but
   distinct gap — that one's about logs made while offline never syncing
   retroactively, not about local storage being wiped outright.
@@ -275,3 +280,16 @@ gate). `~/.saulog-os-service.json` (local, untracked, Edwin-created-only) holds
    re-adding the home-screen icon — see incident log above. He's now testing
    fresh logging in the actual installed app (not a Safari tab) to confirm the
    new install persists correctly; awaiting his confirmation.
+6. **Round 6 (2026-09-09) — mislabeled fruit fix, weight hints, edit-a-log.**
+   Edwin logged mandarins as "Orange" (240g) because there was no Mandarin
+   entry and no easy way to size fruit without a scale. Added `Mandarin` to
+   `foods.json` and corrected the already-synced Supabase row by hand
+   (`id a8a76989-...`) to the new name/macros — local IndexedDB on his phone
+   still shows the old "Orange" entry until he edits or re-logs it, this was
+   a one-off Supabase patch, not a full fix. Added `TYPICAL_WEIGHTS` reference
+   hints (small/medium/large gram estimates) shown under the grams field for
+   banana/orange/mandarin/apple/avocado — still logs by grams, just gives a
+   starting point instead of a blind guess. Added an **Edit** button on each
+   log entry (`startEditLog`/`saveEditedLog`/`syncUpdate` in `app.js`) so a
+   wrong name/grams/notes can be corrected in place instead of delete-and-
+   relog — updates IndexedDB and, if synced, PATCHes the Supabase row.

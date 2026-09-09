@@ -137,6 +137,7 @@
       <datalist id="recipeList"></datalist>
       <label class="field">Weight (grams)</label>
       <input type="number" id="logGrams" placeholder="e.g. 150" min="1">
+      <div id="weightHint" class="muted small" hidden></div>
 
       <label class="field">Notes (optional)</label>
       <input type="text" id="logNotes" class="optional-input" placeholder="e.g. pre-workout, felt bloated" autocomplete="off">
@@ -144,7 +145,10 @@
         <input type="checkbox" id="logRestaurant">
         <label for="logRestaurant" class="small">Eaten out / restaurant (applies +15% kcal &amp; fat correction)</label>
       </div>
-      <button type="submit" class="primary">Log entry</button>
+      <div class="row">
+        <button type="submit" class="primary" id="logSubmitBtn">Log entry</button>
+        <button type="button" class="ghost" id="logCancelEditBtn" hidden>Cancel edit</button>
+      </div>
     </form>
 
     <h2>Today's entries</h2>

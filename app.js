@@ -311,6 +311,19 @@ async function syncInsert(table, row) {
     return null;
   }
 }
+async function syncUpdate(table, supaId, row) {
+  if (!supaId) return false;
+  try {
+    const res = await supabaseRequest(`/rest/v1/${table}?id=eq.${encodeURIComponent(supaId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(row)
+    });
+    return !!(res && res.ok);
+  } catch (err) {
+    console.warn(`Supabase update skipped for ${table}:`, err);
+    return false;
+  }
+}
 async function syncDelete(table, supaId) {
   if (!supaId) return;
   try { await supabaseRequest(`/rest/v1/${table}?id=eq.${encodeURIComponent(supaId)}`, { method: 'DELETE' }); }
@@ -430,7 +443,7 @@ async function renderLog() {
             <div class="muted small"><em>${e.time} · ${e.grams}g${e.quantity ? ' · ' + escapeHtml(e.quantity) : ''}</em></div>
             ${e.notes ? `<div class="muted small notes">${escapeHtml(e.notes)}</div>` : ''}
           </div>
-          <button class="ghost small danger" data-del-log="${e.id}">×</button>
+          <span><button class="ghost small" data-edit-log="${e.id}">Edit</button> <button class="ghost small danger" data-del-log="${e.id}">×</button></span>
         </div>
         <div class="macros"><strong>${e.kcal}</strong> kcal · P <strong>${e.protein}</strong>g · C <strong>${e.carb}</strong>g · F <strong>${e.fat}</strong>g</div>
       </div>`).join('');
@@ -439,6 +452,13 @@ async function renderLog() {
         const logId = Number(btn.dataset.delLog);
         const target = entries.find(e => e.id === logId);
         if (target) softDeleteLog(target);
+      };
+    });
+    box.querySelectorAll('[data-edit-log]').forEach(btn => {
+      btn.onclick = () => {
+        const logId = Number(btn.dataset.editLog);
+        const target = entries.find(e => e.id === logId);
+        if (target) startEditLog(target);
       };
     });
   }
@@ -605,6 +625,47 @@ async function findExerciseByName(name) {
   return exercises.find(e => e.name.toLowerCase() === name.trim().toLowerCase());
 }
 
+// Whole-produce items where "how many/what size" is the natural unit, not a gram guess.
+// USDA/average reference weights, edible portion, per single item.
+const TYPICAL_WEIGHTS = {
+  'banana': 'small ≈ 101g · medium ≈ 118g · large ≈ 136g',
+  'orange': 'small ≈ 96g · medium ≈ 131g · large ≈ 184g',
+  'mandarin': 'one ≈ 74g',
+  'apple': 'small ≈ 149g · medium ≈ 182g · large ≈ 223g',
+  'avocado': 'half ≈ 100g · whole ≈ 200g'
+};
+
+function updateWeightHint() {
+  const hint = $('#weightHint');
+  const name = $('#logName').value.trim().toLowerCase();
+  const match = Object.keys(TYPICAL_WEIGHTS).find(k => name.includes(k));
+  if (match) { hint.textContent = TYPICAL_WEIGHTS[match]; hint.hidden = false; }
+  else { hint.hidden = true; }
+}
+
+// ---------- Edit an already-logged entry ----------
+let editingLogEntry = null;
+
+function startEditLog(entry) {
+  editingLogEntry = entry;
+  $('#logName').value = entry.name;
+  $('#logGrams').value = entry.grams;
+  $('#logNotes').value = entry.notes || '';
+  $('#logRestaurant').checked = !!entry.isRestaurant;
+  updateWeightHint();
+  $('#logSubmitBtn').textContent = 'Save changes';
+  $('#logCancelEditBtn').hidden = false;
+  $('#logForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function cancelEditLog() {
+  editingLogEntry = null;
+  $('#logName').value = ''; $('#logGrams').value = ''; $('#logNotes').value = ''; $('#logRestaurant').checked = false;
+  $('#weightHint').hidden = true;
+  $('#logSubmitBtn').textContent = 'Log entry';
+  $('#logCancelEditBtn').hidden = true;
+}
+
 async function handleLogSubmit(e) {
   e.preventDefault();
   const name = $('#logName').value.trim();
@@ -612,6 +673,8 @@ async function handleLogSubmit(e) {
   const notes = $('#logNotes').value.trim();
   const isRestaurant = $('#logRestaurant').checked;
   if (!name || !grams || grams <= 0) { alert('Enter a food/recipe name and a weight in grams.'); return; }
+
+  if (editingLogEntry) { await saveEditedLog(editingLogEntry, name, grams, notes, isRestaurant); return; }
 
   let food = await findFoodByName(name);
   let recipe = !food ? await findRecipeByName(name) : null;
@@ -660,6 +723,38 @@ async function handleLogSubmit(e) {
   if (supaId) { entry.supaId = supaId; await put('logs', entry); }
 
   $('#logName').value = ''; $('#logGrams').value = ''; $('#logNotes').value = ''; $('#logRestaurant').checked = false;
+  await refreshAll();
+}
+
+async function saveEditedLog(entry, name, grams, notes, isRestaurant) {
+  const food = await findFoodByName(name);
+  const recipe = !food ? await findRecipeByName(name) : null;
+  if (!food && !recipe) { alert(`"${name}" isn't in your library. Pick an existing food/recipe name, or delete and re-log to add a new one.`); return; }
+
+  let nutrition, itemType, itemId;
+  if (food) { nutrition = scaleNutrition(food, grams); itemType = 'food'; itemId = food.id; }
+  else { nutrition = scaleNutrition({ kcal100: recipe.kcal100, protein100: recipe.protein100, carb100: recipe.carb100, fat100: recipe.fat100 }, grams); itemType = 'recipe'; itemId = recipe.id; }
+
+  if (isRestaurant) {
+    nutrition.kcal = round1(nutrition.kcal * RESTAURANT_BUMP);
+    nutrition.fat = round1(nutrition.fat * RESTAURANT_BUMP);
+  }
+
+  Object.assign(entry, {
+    name, grams, notes, isRestaurant, itemType, itemId,
+    kcal: nutrition.kcal, protein: nutrition.protein, carb: nutrition.carb, fat: nutrition.fat
+  });
+  await put('logs', entry);
+
+  if (entry.supaId) {
+    await syncUpdate('food_logs', entry.supaId, {
+      name: entry.name, grams: entry.grams, notes: entry.notes,
+      kcal: entry.kcal, protein: entry.protein, carb: entry.carb, fat: entry.fat,
+      is_restaurant: entry.isRestaurant, item_type: entry.itemType, item_id: String(entry.itemId)
+    });
+  }
+
+  cancelEditLog();
   await refreshAll();
 }
 
@@ -1059,6 +1154,8 @@ async function init() {
   initTabs();
 
   $('#logForm').addEventListener('submit', handleLogSubmit);
+  $('#logName').addEventListener('input', updateWeightHint);
+  $('#logCancelEditBtn').addEventListener('click', cancelEditLog);
   $('#ingForm').addEventListener('submit', handleAddIngredient);
   $('#recipeForm').addEventListener('submit', handleSaveRecipe);
   $('#prevDay').addEventListener('click', () => shiftDate(-1));

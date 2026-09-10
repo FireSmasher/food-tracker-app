@@ -79,8 +79,8 @@ not yet pushed live as of this writing (tested only against a local server).
   device visiting the live URL after a deploy will update normally, same as
   every prior round) -- not a bug in the shipped app, just a trap for local
   iteration.
-- **Not yet done:** none of this is pushed to `main`/GitHub Pages yet. Ask
-  Edwin before pushing (a push goes live in ~30-60s per the section above).
+- **Pushed 2026-09-10**, live on GitHub Pages within ~30-60s of the push per
+  the section above.
 
 ## Read this first — do not create anything new
 

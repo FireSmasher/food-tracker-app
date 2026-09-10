@@ -58,6 +58,23 @@ async function add(store, obj) { return reqToPromise(tx(store, 'readwrite').add(
 async function put(store, obj) { return reqToPromise(tx(store, 'readwrite').put(obj)); }
 async function del(store, id) { return reqToPromise(tx(store, 'readwrite').delete(id)); }
 async function getById(store, id) { return reqToPromise(tx(store).get(id)); }
+// Date-scoped stores (logs/workouts/quarters/weights) have a `date` index -- use it instead
+// of getAll()+filter so a render only touches today's rows, not the whole history. This
+// matters a lot for quarters (up to 96 rows/day) and logs, both of which grow forever.
+async function getAllByIndex(store, indexName, key) { return reqToPromise(tx(store).index(indexName).getAll(key)); }
+async function getByIndex(store, indexName, key) { return reqToPromise(tx(store).index(indexName).get(key)); }
+async function getRecentByIndex(store, indexName, upperBound, limit) {
+  return new Promise((resolve, reject) => {
+    const results = [];
+    const req = tx(store).index(indexName).openCursor(IDBKeyRange.upperBound(upperBound), 'prev');
+    req.onsuccess = e => {
+      const cursor = e.target.result;
+      if (cursor && results.length < limit) { results.push(cursor.value); cursor.continue(); }
+      else resolve(results);
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
 
 // ---------- Quarters: 96 slots/day, same category rules as ~/quarters/quarters.html ----------
 // Kept byte-for-byte identical to the original artifact's `RULES` (per the quarters skill:
@@ -490,6 +507,10 @@ const $$ = sel => document.querySelectorAll(sel);
 
 let currentDate = todayStr();
 
+// Full refresh -- every tab, every store. Only for init() and date navigation (currentDate
+// changed under every tab at once). A single food/workout/recipe save should NOT go through
+// this: it was rebuilding all three tabs (plus a live Supabase fetch for Health) on every
+// single log, which is most of why logging food felt slow. See the narrower refreshers below.
 async function refreshAll() {
   await renderLog();
   await renderFoodDatalist();
@@ -502,6 +523,10 @@ async function refreshAll() {
   await renderQuarters();
 }
 
+function isBuhatActive() {
+  return !!$('#panel-buhat')?.classList.contains('active');
+}
+
 async function renderExerciseDatalist() {
   const exercises = await getAll('exercises');
   exercises.sort((a, b) => a.name.localeCompare(b.name));
@@ -510,22 +535,53 @@ async function renderExerciseDatalist() {
   window._exercisesCache = exercises;
 }
 
-// With the German import, `foods` can run into the thousands -- rebuilding a <datalist>
-// with every row on every refreshAll() (every log, edit, delete) is a real perf hit on a
-// phone, so the datalist itself only ever holds a name-filtered slice, refreshed as the
-// user types (see filterFoodDatalist), not the full table.
+// With the German import, `foods` can run into the thousands -- capping matches shown is a
+// real perf/usability need on a phone either way. This used to be a native <datalist>, but
+// iOS renders a <datalist>'s suggestion popup in a way that can sit on top of the input's own
+// text while typing (a known WebKit quirk) -- replaced with a plain dropdown we position and
+// show/hide ourselves (see setupFoodSuggest/updateFoodSuggest below).
+// renderFoodDatalist() itself (the getAll+sort) is only called on load and when a food is
+// actually added to the library, not on every log/edit/delete -- see handleLogSubmit.
 const FOOD_DATALIST_MAX = 60;
 async function renderFoodDatalist() {
   const foods = await getAll('foods');
   foods.sort((a, b) => a.name.localeCompare(b.name));
   window._foodsCache = foods;
-  filterFoodDatalist('');
+  updateFoodSuggest('logName', 'logNameSuggestions');
+  updateFoodSuggest('ingName', 'ingNameSuggestions');
 }
-function filterFoodDatalist(query) {
+function foodMatches(query) {
   const foods = window._foodsCache || [];
   const q = query.trim().toLowerCase();
-  const matches = (q ? foods.filter(f => f.name.toLowerCase().includes(q)) : foods).slice(0, FOOD_DATALIST_MAX);
-  $('#foodList').innerHTML = matches.map(f => `<option value="${escapeHtml(f.name)}">`).join('');
+  return (q ? foods.filter(f => f.name.toLowerCase().includes(q)) : foods).slice(0, FOOD_DATALIST_MAX);
+}
+function updateFoodSuggest(inputId, listId) {
+  const input = $('#' + inputId);
+  const list = $('#' + listId);
+  if (!input || !list) return;
+  if (document.activeElement !== input) { list.hidden = true; return; } // don't refresh a closed list
+  const matches = foodMatches(input.value);
+  if (!matches.length) { list.hidden = true; list.innerHTML = ''; return; }
+  list.innerHTML = matches.map(f => `<div class="suggest-item" data-name="${escapeHtml(f.name)}">${escapeHtml(f.name)}</div>`).join('');
+  list.hidden = false;
+}
+function setupFoodSuggest(inputId, listId) {
+  const input = $('#' + inputId);
+  const list = $('#' + listId);
+  input.addEventListener('focus', () => updateFoodSuggest(inputId, listId));
+  input.addEventListener('input', () => updateFoodSuggest(inputId, listId));
+  // mousedown, not click, fires before the input's blur -- click would arrive too late,
+  // after blur has already hidden the list.
+  list.addEventListener('mousedown', e => {
+    const item = e.target.closest('[data-name]');
+    if (!item) return;
+    e.preventDefault();
+    input.value = item.dataset.name;
+    list.hidden = true;
+    if (inputId === 'logName') updateWeightHint();
+  });
+  input.addEventListener('blur', () => { list.hidden = true; });
+  input.addEventListener('keydown', e => { if (e.key === 'Escape') list.hidden = true; });
 }
 
 async function renderRecipeDatalist() {
@@ -548,13 +604,13 @@ async function renderRecipeList() {
       <div class="muted small"><em>${r.totalGrams}g total</em> · per 100g: <strong>${round1(r.kcal100)}</strong> kcal, P<strong>${round1(r.protein100)}</strong> C<strong>${round1(r.carb100)}</strong> F<strong>${round1(r.fat100)}</strong></div>
     </div>`).join('');
   box.querySelectorAll('[data-del-recipe]').forEach(btn => {
-    btn.onclick = async () => { await del('recipes', Number(btn.dataset.delRecipe)); await refreshAll(); };
+    btn.onclick = async () => { await del('recipes', Number(btn.dataset.delRecipe)); await renderRecipeDatalist(); await renderRecipeList(); };
   });
 }
 
 async function renderLog() {
-  const all = await getAll('logs');
-  const entries = all.filter(l => l.date === currentDate && !pendingDeletes.logs.has(l.id)).sort((a, b) => a.time.localeCompare(b.time));
+  const all = await getAllByIndex('logs', 'date', currentDate);
+  const entries = all.filter(l => !pendingDeletes.logs.has(l.id)).sort((a, b) => a.time.localeCompare(b.time));
   const box = $('#logBox');
   $('#logDate').textContent = formatFullDate(currentDate);
 
@@ -593,8 +649,7 @@ async function renderLog() {
 
 async function renderTotals(entries) {
   if (!entries) {
-    const all = await getAll('logs');
-    entries = all.filter(l => l.date === currentDate);
+    entries = await getAllByIndex('logs', 'date', currentDate);
   }
   const totals = entries.reduce((acc, e) => {
     acc.kcal += e.kcal; acc.protein += e.protein; acc.carb += e.carb; acc.fat += e.fat;
@@ -639,8 +694,8 @@ function renderTargets(totals) {
 async function renderWorkouts() {
   const dateEl = $('#workoutDate');
   if (!dateEl) return; // Buhat panel not in DOM yet on first paint of an old cached index.html
-  const all = await getAll('workouts');
-  const entries = all.filter(w => w.date === currentDate && !pendingDeletes.workouts.has(w.id)).sort((a, b) => a.time.localeCompare(b.time));
+  const all = await getAllByIndex('workouts', 'date', currentDate);
+  const entries = all.filter(w => !pendingDeletes.workouts.has(w.id)).sort((a, b) => a.time.localeCompare(b.time));
   const box = $('#workoutBox');
   dateEl.textContent = formatFullDate(currentDate);
 
@@ -673,11 +728,10 @@ async function renderWorkouts() {
 // One entry per calendar day, tracks currentDate like the rest of the app. The real
 // outcome measure for the recomp goal, which food/workout/time logs don't otherwise connect to.
 async function renderWeight() {
-  const all = await getAll('weights');
-  const today = all.find(w => w.date === currentDate);
+  const today = await getByIndex('weights', 'date', currentDate);
   $('#weightInput').value = today ? today.kg : '';
 
-  const recent = all.filter(w => w.date <= currentDate).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
+  const recent = await getRecentByIndex('weights', 'date', currentDate, 5);
   $('#weightRecent').textContent = recent.length
     ? recent.map(w => `${w.date.slice(5)}: ${w.kg}kg`).join(' · ')
     : 'No entries yet.';
@@ -688,8 +742,7 @@ async function handleWeightSubmit(e) {
   const kg = Number($('#weightInput').value);
   if (!kg || kg <= 0) { alert('Enter a weight in kg.'); return; }
 
-  const all = await getAll('weights');
-  const existing = all.find(w => w.date === currentDate);
+  const existing = await getByIndex('weights', 'date', currentDate);
   const entry = existing || { date: currentDate };
   entry.kg = round1(kg);
   entry.id = existing ? existing.id : await add('weights', entry);
@@ -718,6 +771,11 @@ async function handleWeightSubmit(e) {
 async function renderHealth() {
   const section = $('#healthSection');
   if (!section) return;
+  // This is a live Supabase fetch, not a local read -- skip it whenever Buhat isn't the
+  // visible tab (the section is invisible behind Kain/Quarters anyway) so saving a food log
+  // or a Quarters slot never has to wait on a network round trip it doesn't need. Whatever
+  // triggers a switch to Buhat calls this again to catch up.
+  if (!isBuhatActive()) return;
   if (!supabaseConfigured() || !loadSbSession()) { section.hidden = true; return; }
   section.hidden = false;
 
@@ -757,8 +815,8 @@ let quartersDayCache = [];
 
 async function renderQuarters() {
   $('#quartersDate').textContent = formatFullDate(currentDate);
-  const all = await getAll('quarters');
-  const byTime = new Map(all.filter(q => q.date === currentDate).map(q => [q.time, q]));
+  const all = await getAllByIndex('quarters', 'date', currentDate);
+  const byTime = new Map(all.map(q => [q.time, q]));
   quartersDayCache = Q_SLOTKEYS.map(t => byTime.get(t) || { date: currentDate, time: t, label: '', category: 'unsorted', activities: [] });
 
   const grid = $('#quartersGrid');
@@ -778,6 +836,27 @@ async function renderQuarters() {
   });
 
   renderQuartersSummary();
+  scrollQuartersToRelevantSlot();
+}
+
+// Rebuilding the grid always used to leave it scrolled to 00:00 -- fine at 6am, useless at
+// 2pm when the row you actually need is 56 rows down. Land on today's current-time slot (or,
+// for a past date, the last slot that's actually filled in) instead, so opening/reopening
+// Quarters drops you where you'd type next rather than making you scroll down every time.
+function scrollQuartersToRelevantSlot() {
+  const grid = $('#quartersGrid');
+  if (!grid) return;
+  let targetTime;
+  if (currentDate === todayStr()) {
+    const now = new Date();
+    targetTime = qPad2(now.getHours()) + ':' + qPad2(Math.floor(now.getMinutes() / 15) * 15);
+  } else {
+    const filled = quartersDayCache.filter(e => e.label);
+    if (!filled.length) return;
+    targetTime = filled[filled.length - 1].time;
+  }
+  const row = grid.querySelector(`[data-qslot="${targetTime}"]`)?.closest('.qrow');
+  if (row) row.scrollIntoView({ block: 'center' });
 }
 
 async function saveQuarterSlot(time, rawLabel) {
@@ -786,8 +865,7 @@ async function saveQuarterSlot(time, rawLabel) {
   const category = activities.length ? activities[0].category : 'unsorted';
   const confirmed = activities.length <= 1;
 
-  const all = await getAll('quarters');
-  const existing = all.find(q => q.date === currentDate && q.time === time);
+  const existing = await getByIndex('quarters', 'date_time', [currentDate, time]);
 
   if (!label) {
     if (existing) {
@@ -1005,6 +1083,7 @@ async function handleLogSubmit(e) {
 
   let food = await findFoodByName(name);
   let recipe = !food ? await findRecipeByName(name) : null;
+  let addedNewFood = false;
 
   if (!food && !recipe) {
     // Unknown food -> prompt for manual macro entry (per 100g), save to library
@@ -1018,6 +1097,7 @@ async function handleLogSubmit(e) {
     const id = await add('foods', newFood);
     newFood.id = id;
     food = newFood;
+    addedNewFood = true;
   }
 
   let nutrition, itemType, itemId;
@@ -1050,7 +1130,12 @@ async function handleLogSubmit(e) {
   if (supaId) { entry.supaId = supaId; await put('logs', entry); }
 
   $('#logName').value = ''; $('#logGrams').value = ''; $('#logNotes').value = ''; $('#logRestaurant').checked = false;
-  await refreshAll();
+  // A food log never touches recipes/exercises/workouts/weight/health/quarters, and the food
+  // library only changed if this was a genuinely new custom food -- so only re-render those,
+  // not the whole app, on every single entry. This (plus the Health-fetch gate above) is the
+  // main fix for logging feeling slow.
+  await renderLog();
+  if (addedNewFood) await renderFoodDatalist();
 }
 
 async function saveEditedLog(entry, name, grams, notes, isRestaurant) {
@@ -1082,7 +1167,8 @@ async function saveEditedLog(entry, name, grams, notes, isRestaurant) {
   }
 
   cancelEditLog();
-  await refreshAll();
+  // Editing requires an existing food/recipe name, so the library itself never changes here.
+  await renderLog();
 }
 
 // ---------- Recipe builder ----------
@@ -1139,7 +1225,10 @@ async function handleSaveRecipe(e) {
   recipeIngredients = [];
   $('#recipeName').value = '';
   renderRecipeBuilder();
-  await refreshAll();
+  // Saving a recipe only touches the recipes store -- no need to also re-render Log/foods/
+  // Buhat/Quarters.
+  await renderRecipeDatalist();
+  await renderRecipeList();
 }
 
 // ---------- Buhat: workout logging ----------
@@ -1537,6 +1626,14 @@ function initTabs() {
       $('#settingsGearBtn').classList.remove('active');
       tab.classList.add('active');
       $('#panel-' + tab.dataset.tab).classList.add('active');
+      // Health is gated to Buhat-visible (see renderHealth) to keep it off the food-log path,
+      // so catch it up here in case a date nav happened while another tab was showing.
+      if (tab.dataset.tab === 'buhat') renderHealth();
+      // scrollIntoView on a row is a no-op while the Quarters panel is display:none (e.g. the
+      // very first renderQuarters() at init, before any tab is switched to), so re-run it here
+      // once the panel is actually visible -- this is what makes opening Quarters land near
+      // "now" instead of always at 00:00.
+      if (tab.dataset.tab === 'quarters') scrollQuartersToRelevantSlot();
     };
   });
   $$('.subtab').forEach(sub => {
@@ -1572,10 +1669,11 @@ async function init() {
   initTabs();
 
   $('#logForm').addEventListener('submit', handleLogSubmit);
-  $('#logName').addEventListener('input', e => { updateWeightHint(); filterFoodDatalist(e.target.value); });
+  $('#logName').addEventListener('input', updateWeightHint);
+  setupFoodSuggest('logName', 'logNameSuggestions');
   $('#logCancelEditBtn').addEventListener('click', cancelEditLog);
   $('#ingForm').addEventListener('submit', handleAddIngredient);
-  $('#ingName').addEventListener('input', e => filterFoodDatalist(e.target.value));
+  setupFoodSuggest('ingName', 'ingNameSuggestions');
   $('#recipeForm').addEventListener('submit', handleSaveRecipe);
   $('#prevDay').addEventListener('click', () => shiftDate(-1));
   $('#nextDay').addEventListener('click', () => shiftDate(1));

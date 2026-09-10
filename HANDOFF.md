@@ -1,9 +1,86 @@
 # Handoff: Saulog OS (Kain + Buhat + Quarters)
 
-Status as of 2026-09-08, end of day. This file was rewritten from scratch on this
-date to consolidate five rounds of same-day work into one current reference — the
-old round-by-round log was getting too long to safely skim. Read this whole file
+Status as of 2026-09-10. This file was rewritten from scratch on 2026-09-08 to
+consolidate five rounds of same-day work into one current reference — the old
+round-by-round log was getting too long to safely skim. Read this whole file
 before touching this project again.
+
+## Round 11 (2026-09-10) — Kain logging was slow, food autocomplete blocked the input
+
+Edwin reported Kain felt slow every time he logged food, and separately that the
+food-name autocomplete dropdown covered up the text he was typing. Both fixed,
+not yet pushed live as of this writing (tested only against a local server).
+
+- **Root cause of the slowness: `refreshAll()` on every single log.** Every food
+  save (and edit, and recipe save) called `refreshAll()`, which re-rendered all
+  three tabs -- including a *live Supabase network fetch* for the Buhat Health
+  card -- even though a food log never touches Buhat, Recipes, Exercises, Weight,
+  or Health. Fixed four ways:
+  1. `renderHealth()` now no-ops unless the Buhat panel is actually visible
+     (`isBuhatActive()`), so logging food never waits on a network round trip for
+     data it isn't even showing. Switching to the Buhat tab calls it again to
+     catch up.
+  2. `handleLogSubmit`/`saveEditedLog` now call `renderLog()` only (plus
+     `renderFoodDatalist()`, but only when the entry was a genuinely new custom
+     food); `handleSaveRecipe` and the recipe-delete button now touch only
+     `renderRecipeDatalist()`/`renderRecipeList()`. `refreshAll()` itself is
+     unchanged and still used for init() and date navigation (shiftDate) where a
+     full refresh is actually correct.
+  3. `logs`/`workouts`/`quarters`/`weights` all already had a `date` index in
+     IndexedDB (added when each store was created) but nothing used it --
+     `renderLog`/`renderWorkouts`/`renderQuarters`/`renderWeight`/
+     `saveQuarterSlot` were doing `getAll()` (the *entire* history of that store)
+     and filtering to `currentDate` in JS. Added `getAllByIndex`/`getByIndex`/
+     `getRecentByIndex` helpers and switched all five to index lookups, so a
+     render only touches today's rows. This matters most for `quarters` (up to
+     96 rows/day) and will matter more for all of them the longer he uses the
+     app -- the old code got slower every day, forever.
+  4. `renderFoodDatalist()` (the `getAll('foods')` + sort over ~3,600 rows: 135
+     curated + ~3,460 German import) is now only called on load and when a food
+     is actually added to the library, not on every log/edit/delete.
+- **Food-name autocomplete replaced, not just re-styled.** It was a native
+  `<datalist>` (`#foodList`, shared by `#logName` and `#ingName`). iOS renders a
+  `<datalist>` popup in a way that can sit on top of the input's own text while
+  typing -- a known WebKit quirk, not something fixable with CSS on a native
+  control. Replaced with a plain `<div class="suggest-list">` dropdown,
+  absolutely positioned under the input (`.suggest-wrap` wrapper), built and
+  shown/hidden entirely by `updateFoodSuggest`/`setupFoodSuggest` in app.js.
+  Click-to-select uses `mousedown` + `preventDefault()` (not `click`) so
+  selecting an item doesn't lose focus/get raced by the input's own `blur`.
+  Verified in a local browser: typing stays fully visible with the dropdown
+  cleanly below it, click-to-select fills the input and closes the list,
+  keeps focus, no console errors. The `#foodList` datalist element and both
+  inputs' `list=` attributes are gone; `#recipeList` and `#exerciseList`
+  (workout autocomplete) are untouched -- only the food-name one was reported
+  as broken and is the only one at this row count (3,600+) where a native
+  control's quirks were actually visible.
+- **Quarters: now opens near "now," not always at 00:00.** Edwin's ask:
+  filling in 2pm shouldn't mean scrolling down from the top every time he
+  reopens the tab. `renderQuarters()` rebuilds the grid's `innerHTML` from
+  scratch (on init, date nav, and -- before fix #2 above -- on every food log),
+  which always reset scroll to the top. Added `scrollQuartersToRelevantSlot()`:
+  scrolls to today's current-time slot (rounded down to the nearest 15 min) when
+  viewing today, or to the last filled-in slot when viewing a past date. Called
+  at the end of `renderQuarters()`, but that alone is a no-op the very first
+  time (the Quarters panel is still `display:none` at init, before any tab is
+  clicked, and `scrollIntoView` does nothing on a hidden element) -- so it's
+  also re-run from the tab-click handler when switching to Quarters, the same
+  pattern used for the Health catch-up above. Typing into a slot itself
+  (`saveQuarterSlot`) does NOT trigger a full grid re-render or re-scroll, so
+  it won't fight the user mid-edit.
+- **Testing note for whoever picks this up:** a live local test kept getting
+  served stale HTML/JS despite hard-reloads and fresh `navigate()` calls, even
+  though `curl` against the local server showed the edited files. Cause: the
+  PWA's own Service Worker (`sw.js`, cache `food-tracker-v15`) was still
+  controlling the tab from an earlier page load in the same session and
+  intercepting navigation. `navigator.serviceWorker.getRegistrations()` +
+  `.unregister()` and `caches.keys()` + `caches.delete()` were needed before a
+  reload actually picked up the changes. This is a testing-only gotcha (a real
+  device visiting the live URL after a deploy will update normally, same as
+  every prior round) -- not a bug in the shipped app, just a trap for local
+  iteration.
+- **Not yet done:** none of this is pushed to `main`/GitHub Pages yet. Ask
+  Edwin before pushing (a push goes live in ~30-60s per the section above).
 
 ## Read this first — do not create anything new
 
